@@ -35,6 +35,17 @@ public class MainActivity extends BridgeActivity {
             settings.setJavaScriptEnabled(true);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            }
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().resumeTimers();
         }
     }
 

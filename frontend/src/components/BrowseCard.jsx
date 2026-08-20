@@ -5,14 +5,21 @@
  */
 import { Play } from "lucide-react";
 import usePlayerStore from "../store/usePlayerStore";
+import { prefetchStream } from "../lib/api";
 
 export default function BrowseCard({ track }) {
   const { playTrack, currentTrack, isPlaying } = usePlayerStore();
   const isActive = currentTrack?.id === track.id;
 
+  const handleWarmCache = () => {
+    if (track?.id) prefetchStream(track.id);
+  };
+
   return (
     <button
       onClick={() => playTrack(track)}
+      onMouseEnter={handleWarmCache}
+      onTouchStart={handleWarmCache}
       className="
         group flex flex-col gap-2.5
         w-36 sm:w-40 shrink-0

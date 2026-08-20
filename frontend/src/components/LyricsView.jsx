@@ -15,22 +15,40 @@ import { X, Mic2, Loader2, Music, Sparkles } from "lucide-react";
 import usePlayerStore from "../store/usePlayerStore";
 import { getActiveLineIdx, getWordActivations } from "../lib/wordSync";
 
+
 export default function LyricsView({ seek }) {
   const { isLyricsOpen, toggleLyrics, lyrics, lyricsLoading, progress, currentTrack } =
     usePlayerStore();
 
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
+  const prevIdxRef = useRef(-1);
+  const prevTrackId = useRef(null);
 
+  // Reset scroll position and active index whenever the track changes
+  useEffect(() => {
+    if (currentTrack?.id !== prevTrackId.current) {
+      prevTrackId.current = currentTrack?.id || null;
+      prevIdxRef.current = -1;
+      // Scroll lyrics pane back to top on track change
+      if (containerRef.current) {
+        containerRef.current.scrollTop = 0;
+      }
+    }
+  }, [currentTrack]);
+
+  // Guard: don't highlight any line until progress has moved past the first lyric's timestamp.
+  // This prevents lyrics from appearing "stuck" at line 0 before music actually starts.
+  const firstLineTime = lyrics?.synced && lyrics.lines?.length > 0 ? lyrics.lines[0].time : 0;
   const activeIdx =
-    lyrics?.synced && lyrics.lines ? getActiveLineIdx(lyrics.lines, progress) : -1;
+    lyrics?.synced && lyrics.lines && progress >= firstLineTime
+      ? getActiveLineIdx(lyrics.lines, progress)
+      : -1;
 
   const wordActivations =
     activeIdx >= 0 && lyrics?.synced && lyrics.lines
       ? getWordActivations(lyrics.lines, activeIdx, progress)
       : [];
-
-  const prevIdxRef = useRef(-1);
 
   useEffect(() => {
     if (activeIdx !== prevIdxRef.current && activeIdx >= 0) {

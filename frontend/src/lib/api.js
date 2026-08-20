@@ -105,4 +105,20 @@ export function pingHealth() {
   fetch(`${BASE}/health`).catch(() => {});
 }
 
+// ── Prefetch / Cache Warming ──────────────────────────────────────────────────
+// Call this on hover to silently resolve the stream URL so when the user clicks
+// "Play", the backend already has it cached → near-instant playback start.
+const _prefetchInFlight = new Set();
+
+export function prefetchStream(videoId) {
+  if (!videoId || _prefetchInFlight.has(videoId)) return;
+  _prefetchInFlight.add(videoId);
+  fetch(`${BASE}/stream?id=${encodeURIComponent(videoId)}`)
+    .catch(() => {})
+    .finally(() => {
+      // Keep in set for 60s to avoid hammering
+      setTimeout(() => _prefetchInFlight.delete(videoId), 60_000);
+    });
+}
+
 

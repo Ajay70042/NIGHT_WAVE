@@ -1,11 +1,15 @@
-/** Search result track row */
 import { Play, Clock } from "lucide-react";
 import { formatTime } from "../lib/formatTime";
 import usePlayerStore from "../store/usePlayerStore";
+import { prefetchStream } from "../lib/api";
 
 export default function TrackCard({ track, compact = false, onSelect }) {
   const { playTrack, addToQueue, currentTrack } = usePlayerStore();
   const isActive = currentTrack?.id === track.id;
+
+  const handleWarmCache = () => {
+    if (track?.id) prefetchStream(track.id);
+  };
 
   const handleClick = () => {
     if (onSelect) {
@@ -24,6 +28,8 @@ export default function TrackCard({ track, compact = false, onSelect }) {
         ${isActive ? "bg-accent/10 ring-1 ring-accent/20" : ""}
       `}
       onClick={handleClick}
+      onMouseEnter={handleWarmCache}
+      onTouchStart={handleWarmCache}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && handleClick()}
