@@ -22,20 +22,22 @@ This document outlines the planned features, enhancements, and tasks to execute 
 
 ---
 
-## 🎤 3. Multi-Source Free Lyrics (100% Free / No API Key)
-- [ ] **Multiple Free Providers:**
-  - **LRCLIB** (Current: Synced LRC timestamps)
-  - **Genius API Scraper** (Fallback: Massive international & Hindi / regional catalog)
-  - **lyrics.ovh** (Fallback: Quick REST lookup)
-- [ ] **Smart Title Cleaning:** Strip noise from search titles (e.g. `(Official Video)`, `[Lyrics]`, `(From "Movie")`) to drastically increase lyrics match rates.
-- [ ] **Plain Text Lyrics Formatting:** Beautiful typography & scrolling for songs that don't have synchronized LRC timestamps.
+## 🎤 3. Multi-Source Free Lyrics (100% Free / Synced Karaoke Mode) (Completed)
+- [x] **Multiple Free Providers:**
+  - **LRCLIB** (Studio synced LRC timestamps)
+  - **NetEase Cloud Music** (50M+ synchronized global & regional catalog)
+  - **YouTube Captions / Subtitles** (Millisecond auto & manual subtitles via `yt-dlp`)
+  - **lyrics.ovh** (Broad plain-text fallback)
+- [x] **Smart Title Cleaning:** Automatically strip `(Official Video)`, `feat. X`, `[4K]`, etc., to maximize match rates.
+- [x] **Intelligent Auto-Sync Engine:** Automatically transforms plain-text lyrics into timestamped auto-scrolling karaoke lines.
+- [x] **Interactive Click-to-Seek:** Click any line in the lyrics drawer to jump playback directly to that timestamp.
 
 ---
 
-## ☁️ 4. Online Deployment (Play from Anywhere / Mobile)
-- [ ] **Backend Deployment:** Deploy FastAPI on Railway / Render (free tier, persistent 24/7).
-- [ ] **Frontend Deployment:** Deploy Vite React build on Vercel / Netlify with custom domain / HTTPS.
-- [ ] **Cross-Device Testing:** Verify search, lyrics, and YouTube audio playback from smartphones and other computers.
+## ☁️ 4. Online Deployment (Completed)
+- [x] **Backend Deployment:** Live on Render at `https://nightwave-api.onrender.com`.
+- [x] **Frontend Deployment:** Live on Vercel with automatic API proxy rewrites in `vercel.json`.
+- [x] **Cold-Start Resilience:** Auto-retries with exponential backoff on page load and search.
 
 ---
 

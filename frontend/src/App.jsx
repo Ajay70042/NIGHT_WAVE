@@ -90,7 +90,7 @@ export default function App() {
       {/* ── Persistent overlays (both modes) ── */}
       <PlayerBar seek={seek} />
       <QueueDrawer />
-      <LyricsView />
+      <LyricsView seek={seek} />
       <SearchModal />
     </>
   );

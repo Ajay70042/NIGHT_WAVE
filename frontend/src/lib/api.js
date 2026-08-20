@@ -63,12 +63,15 @@ export async function resolveStream(videoId) {
   };
 }
 
-export async function fetchLyrics(title, artist, duration = 0) {
+export async function fetchLyrics(title, artist, duration = 0, videoId = "") {
   const params = new URLSearchParams({
     title,
     artist,
     duration: String(Math.round(duration)),
   });
+  if (videoId) {
+    params.set("videoId", videoId);
+  }
   return await fetchWithRetry(`${BASE}/lyrics?${params}`);
 }
 

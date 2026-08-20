@@ -1,15 +1,17 @@
 """
-GET /api/lyrics?title={title}&artist={artist}&duration={seconds}
+GET /api/lyrics?title={title}&artist={artist}&duration={seconds}&videoId={id}
 
-Strategy:
-1. Query LRCLIB (free, no key, LRC synced lyrics)
-2. Fallback: return empty/plain if not found
-Returns:
-  { synced: true,  lines: [{time: float, text: str}, ...] }  — LRC format
-  { synced: false, plain: str }                               — plain text
-  { synced: false, plain: "" }                                — not found
+Multi-Source Synced Lyrics Engine:
+1. Intelligent Title & Artist Normalizer (strips "(Official Video)", "feat. X", "4K", etc.)
+2. Provider 1: LRCLIB (Direct exact get + multi-query search with duration proximity)
+3. Provider 2: NetEase Cloud Music (Massive database of synchronized LRC lyrics)
+4. Provider 3: YouTube Captions / Subtitles (Exact millisecond manual & auto subtitles via yt-dlp)
+5. Provider 4: Lyrics.ovh (Plain text database fallback)
+6. Intelligent Auto-Sync Engine: If only plain text is found, automatically assigns weighted timestamps
+   so that 100% of songs with lyrics become time-synchronized and auto-scroll with the music!
 """
 import re
+import asyncio
 import httpx
 from fastapi import APIRouter, Query
 try:
@@ -19,24 +21,263 @@ except ImportError:
 
 router = APIRouter()
 LRCLIB_BASE = "https://lrclib.net/api"
+NETEASE_SEARCH_URL = "https://music.163.com/api/cloudsearch/pc"
+NETEASE_LYRIC_URL = "https://music.163.com/api/song/lyric"
+LYRICS_OVH_BASE = "https://api.lyrics.ovh/v1"
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Referer": "https://music.163.com/",
+}
+
+
+def _clean_variations(title: str, artist: str = "") -> list[tuple[str, str]]:
+    """
+    Cleans noisy YouTube titles and generates best-candidate (title, artist) search pairs.
+    E.g. 'Starboy (Official Music Video) ft. Daft Punk' -> 'Starboy', 'The Weeknd'
+    """
+    # Remove bracketed noise
+    t_clean = re.sub(
+        r"[\(\[\{].*?(official|video|audio|lyrics|visualizer|remaster|explicit|hd|4k|live|feat|ft|prod|version|edit).*?[\)\]\}]",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    )
+    # Remove trailing feat.
+    t_clean = re.sub(r"\s+(feat\.?|ft\.?)\s+.*$", "", t_clean, flags=re.IGNORECASE)
+    # Remove trailing track numbering / hyphens
+    t_clean = re.sub(r"[-–—|].*$", "", t_clean).strip()
+    t_clean = re.sub(r"\s+", " ", t_clean).strip()
+
+    # Clean artist
+    a_clean = re.sub(r"\s+(feat\.?|ft\.?|,|&|x|\+).*$", "", artist, flags=re.IGNORECASE).strip()
+    a_clean = re.sub(r"\s+", " ", a_clean).strip()
+
+    variations = []
+    if t_clean and a_clean:
+        variations.append((t_clean, a_clean))
+    if t_clean and artist and artist != a_clean:
+        variations.append((t_clean, artist))
+    if title != t_clean and a_clean:
+        variations.append((title, a_clean))
+    if t_clean:
+        variations.append((t_clean, ""))
+    if title not in [v[0] for v in variations]:
+        variations.append((title, artist))
+
+    return variations
 
 
 def _parse_lrc(lrc_text: str) -> list[dict]:
-    """Parse LRC format into [{time: float, text: str}]."""
+    """Parse LRC format into [{time: float, text: str}]. Handles multi-timestamp lines."""
     lines = []
-    pattern = re.compile(r"\[(\d{1,3}):(\d{2})\.(\d{2,3})\](.*)")
+    time_tag_pattern = re.compile(r"\[(\d{1,3}):(\d{2})(?:[\.:](\d{2,3}))?\]")
+    
     for raw in lrc_text.splitlines():
-        m = pattern.match(raw.strip())
-        if not m:
+        raw = raw.strip()
+        if not raw:
             continue
-        minutes, seconds, centiseconds, text = m.groups()
-        time_secs = int(minutes) * 60 + int(seconds) + int(centiseconds) / (
-            100 if len(centiseconds) == 2 else 1000
-        )
-        text = text.strip()
-        if text:  # skip empty lines (instrumental markers etc.)
+        # Skip header metadata lines like [ar:Artist], [ti:Title]
+        if re.match(r"^\[[a-zA-Z]{2,6}:.*\]$", raw):
+            continue
+
+        timestamps = list(time_tag_pattern.finditer(raw))
+        if not timestamps:
+            continue
+
+        text = time_tag_pattern.sub("", raw).strip()
+        # Clean musical notes
+        text = re.sub(r"[♪♫#\r]+", "", text).strip()
+        if not text:
+            continue
+
+        for m in timestamps:
+            minutes, seconds, centiseconds = m.groups()
+            centiseconds = centiseconds or "0"
+            cs_val = int(centiseconds) / (100 if len(centiseconds) <= 2 else 1000)
+            time_secs = int(minutes) * 60 + int(seconds) + cs_val
             lines.append({"time": round(time_secs, 2), "text": text})
+
     return sorted(lines, key=lambda x: x["time"])
+
+
+def _auto_sync_plain_lyrics(plain_text: str, duration: float = 180.0) -> list[dict]:
+    """
+    Intelligently generates realistic time-synchronized lines for plain text lyrics
+    using syllable/character weight pacing across the track's vocal duration.
+    """
+    raw_lines = [l.strip() for l in plain_text.splitlines() if l.strip()]
+    lines = []
+    for l in raw_lines:
+        # Ignore [Chorus], (Verse 1), etc.
+        if re.match(r"^(\[|\()[A-Za-z0-9\s:_-]+(\]|\))$", l):
+            continue
+        cleaned = re.sub(r"[♪♫#\r]+", "", l).strip()
+        if cleaned:
+            lines.append(cleaned)
+    if not lines:
+        return []
+
+    dur = float(duration) if duration > 30 else len(lines) * 3.8
+    start_t = min(15.0, max(4.0, dur * 0.06))
+    end_t = max(start_t + 10.0, dur * 0.94)
+    total_active_time = end_t - start_t
+
+    # Calculate weight per line based on character length and word count
+    weights = []
+    for l in lines:
+        w = max(1.5, len(l) * 0.1 + len(l.split()) * 0.4)
+        weights.append(w)
+
+    sum_w = sum(weights)
+    curr = start_t
+    result = []
+    for l, w in zip(lines, weights):
+        result.append({"time": round(curr, 2), "text": l})
+        curr += (w / sum_w) * total_active_time
+
+    return result
+
+
+async def _fetch_lrclib(client: httpx.AsyncClient, variations: list[tuple[str, str]], duration: int) -> dict | None:
+    """Query LRCLIB with candidate variations."""
+    for t, a in variations:
+        try:
+            # 1. Exact get
+            params = {"track_name": t}
+            if a:
+                params["artist_name"] = a
+            if duration > 0:
+                params["duration"] = duration
+
+            r = await client.get(f"{LRCLIB_BASE}/get", params=params, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                synced_lrc = data.get("syncedLyrics") or ""
+                if synced_lrc:
+                    parsed = _parse_lrc(synced_lrc)
+                    if parsed:
+                        return {"synced": True, "lines": parsed, "provider": "lrclib"}
+                plain = data.get("plainLyrics") or ""
+                if plain:
+                    return {"synced": False, "plain": plain, "provider": "lrclib"}
+
+            # 2. Search fallback
+            q = f"{t} {a}".strip()
+            r_search = await client.get(f"{LRCLIB_BASE}/search", params={"q": q}, timeout=5)
+            if r_search.status_code == 200:
+                results = r_search.json()
+                if isinstance(results, list) and results:
+                    # Pick closest duration or first
+                    best = results[0]
+                    if duration > 0:
+                        best = min(results[:5], key=lambda x: abs((x.get("duration") or 0) - duration))
+                    synced_lrc = best.get("syncedLyrics") or ""
+                    if synced_lrc:
+                        parsed = _parse_lrc(synced_lrc)
+                        if parsed:
+                            return {"synced": True, "lines": parsed, "provider": "lrclib"}
+                    plain = best.get("plainLyrics") or ""
+                    if plain:
+                        return {"synced": False, "plain": plain, "provider": "lrclib"}
+        except Exception:
+            continue
+    return None
+
+
+async def _fetch_netease(client: httpx.AsyncClient, variations: list[tuple[str, str]]) -> dict | None:
+    """Query NetEase Cloud Music for synchronized LRC lyrics."""
+    for t, a in variations:
+        try:
+            query = f"{t} {a}".strip()
+            r = await client.post(
+                NETEASE_SEARCH_URL,
+                data={"s": query, "type": 1, "limit": 3, "offset": 0},
+                headers=DEFAULT_HEADERS,
+                timeout=5,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                songs = data.get("result", {}).get("songs", [])
+                if songs:
+                    song_id = songs[0].get("id")
+                    if song_id:
+                        r_lyric = await client.get(
+                            NETEASE_LYRIC_URL,
+                            params={"os": "pc", "id": song_id, "lv": -1, "kv": -1, "tv": -1},
+                            headers=DEFAULT_HEADERS,
+                            timeout=5,
+                        )
+                        if r_lyric.status_code == 200:
+                            lyric_data = r_lyric.json()
+                            lrc_str = lyric_data.get("lrc", {}).get("lyric", "")
+                            if lrc_str:
+                                parsed = _parse_lrc(lrc_str)
+                                if parsed:
+                                    return {"synced": True, "lines": parsed, "provider": "netease"}
+        except Exception:
+            continue
+    return None
+
+
+def _extract_youtube_captions_sync(video_id: str) -> list[dict]:
+    """Extract YouTube captions/subtitles via yt-dlp."""
+    if not video_id:
+        return []
+    import yt_dlp
+    ydl_opts = {
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitleslangs": ["en", "en-US", "en-orig", "en-GB"],
+        "quiet": True,
+        "no_warnings": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+            subs = info.get("subtitles") or {}
+            auto_subs = info.get("automatic_captions") or {}
+            all_subs = {**subs, **auto_subs}
+            lang_keys = [k for k in all_subs.keys() if k.startswith("en")] or list(all_subs.keys())
+
+            for lk in lang_keys:
+                formats = all_subs.get(lk, [])
+                for f in formats:
+                    if f.get("ext") == "json3":
+                        with httpx.Client(timeout=6) as sync_client:
+                            r = sync_client.get(f.get("url"))
+                            if r.status_code == 200:
+                                data = r.json()
+                                lines = []
+                                for event in data.get("events", []):
+                                    t_ms = event.get("tStartMs", 0)
+                                    segs = event.get("segs", [])
+                                    text = "".join(seg.get("utf8", "") for seg in segs).strip()
+                                    text = re.sub(r"[♪♫\r\n]+", " ", text).strip()
+                                    if text and not re.match(r"^\[.*?\]$", text):
+                                        lines.append({"time": round(t_ms / 1000, 2), "text": text})
+                                if lines:
+                                    return sorted(lines, key=lambda x: x["time"])
+    except Exception:
+        pass
+    return []
+
+
+async def _fetch_lyrics_ovh(client: httpx.AsyncClient, variations: list[tuple[str, str]]) -> str | None:
+    """Fetch plain text lyrics from Lyrics.ovh."""
+    for t, a in variations:
+        if not a:
+            continue
+        try:
+            r = await client.get(f"{LYRICS_OVH_BASE}/{a}/{t}", timeout=4)
+            if r.status_code == 200:
+                lyrics_text = r.json().get("lyrics", "")
+                if lyrics_text and len(lyrics_text.strip()) > 30:
+                    return lyrics_text
+        except Exception:
+            continue
+    return None
 
 
 @router.get("/lyrics")
@@ -44,71 +285,59 @@ async def lyrics(
     title: str = Query(...),
     artist: str = Query(""),
     duration: int = Query(0, ge=0),
+    videoId: str = Query("", description="Optional YouTube video ID for subtitle fallback"),
 ):
-    cache_key = f"{title.lower()}::{artist.lower()}"
+    cache_key = f"{title.lower().strip()}::{artist.lower().strip()}::{duration}"
     cached = get_lyrics(cache_key)
     if cached:
         return cached
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        # --- Strategy 1: LRCLIB get (exact match) ---
-        try:
-            params = {"track_name": title, "artist_name": artist}
-            if duration > 0:
-                params["duration"] = duration
-            r = await client.get(f"{LRCLIB_BASE}/get", params=params)
+    variations = _clean_variations(title, artist)
 
-            if r.status_code == 200:
-                data = r.json()
-                synced_lrc = data.get("syncedLyrics") or ""
-                plain_text = data.get("plainLyrics") or ""
+    async with httpx.AsyncClient(timeout=8) as client:
+        # 1. Try LRCLIB for synced LRC
+        lrclib_res = await _fetch_lrclib(client, variations, duration)
+        if lrclib_res and lrclib_res.get("synced"):
+            set_lyrics(cache_key, lrclib_res)
+            return lrclib_res
 
-                if synced_lrc:
-                    parsed = _parse_lrc(synced_lrc)
-                    result = {"synced": True, "lines": parsed}
-                    set_lyrics(cache_key, result)
-                    return result
-                elif plain_text:
-                    result = {"synced": False, "plain": plain_text}
-                    set_lyrics(cache_key, result)
-                    return result
-        except Exception:
-            pass
+        # 2. Try NetEase Cloud Music for synced LRC
+        netease_res = await _fetch_netease(client, variations)
+        if netease_res and netease_res.get("synced"):
+            set_lyrics(cache_key, netease_res)
+            return netease_res
 
-        # --- Strategy 2: LRCLIB search fallback ---
-        try:
-            r = await client.get(
-                f"{LRCLIB_BASE}/search",
-                params={"q": f"{title} {artist}".strip()},
-            )
-            if r.status_code == 200:
-                results = r.json()
-                # pick best match by duration proximity
-                best = None
-                best_diff = float("inf")
-                for item in results[:5]:
-                    item_dur = item.get("duration") or 0
-                    diff = abs(item_dur - duration) if duration else 0
-                    if diff < best_diff:
-                        best_diff = diff
-                        best = item
+        # 3. Try YouTube Captions / Subtitles if videoId is provided
+        if videoId:
+            try:
+                loop = asyncio.get_event_loop()
+                yt_lines = await loop.run_in_executor(None, _extract_youtube_captions_sync, videoId)
+                if yt_lines:
+                    res = {"synced": True, "lines": yt_lines, "provider": "youtube_captions"}
+                    set_lyrics(cache_key, res)
+                    return res
+            except Exception:
+                pass
 
-                if best:
-                    synced_lrc = best.get("syncedLyrics") or ""
-                    plain_text = best.get("plainLyrics") or ""
-                    if synced_lrc:
-                        parsed = _parse_lrc(synced_lrc)
-                        result = {"synced": True, "lines": parsed}
-                        set_lyrics(cache_key, result)
-                        return result
-                    elif plain_text:
-                        result = {"synced": False, "plain": plain_text}
-                        set_lyrics(cache_key, result)
-                        return result
-        except Exception:
-            pass
+        # 4. If LRCLIB gave plain text, auto-sync it with intelligent timestamps
+        if lrclib_res and lrclib_res.get("plain"):
+            synced_lines = _auto_sync_plain_lyrics(lrclib_res["plain"], duration)
+            if synced_lines:
+                res = {"synced": True, "lines": synced_lines, "provider": "lrclib_autosync"}
+                set_lyrics(cache_key, res)
+                return res
 
-    # Not found
-    result = {"synced": False, "plain": ""}
-    set_lyrics(cache_key, result)
-    return result
+        # 5. Try Lyrics.ovh and auto-sync
+        plain_ovh = await _fetch_lyrics_ovh(client, variations)
+        if plain_ovh:
+            synced_lines = _auto_sync_plain_lyrics(plain_ovh, duration)
+            if synced_lines:
+                res = {"synced": True, "lines": synced_lines, "provider": "lyricsovh_autosync"}
+                set_lyrics(cache_key, res)
+                return res
+
+    # Fallback if no lyrics found anywhere
+    res = {"synced": False, "plain": ""}
+    set_lyrics(cache_key, res)
+    return res
+

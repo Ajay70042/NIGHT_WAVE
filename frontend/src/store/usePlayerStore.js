@@ -120,7 +120,12 @@ const usePlayerStore = create(
       _loadLyrics: async (track) => {
         set({ lyricsLoading: true, lyrics: null });
         try {
-          const data = await fetchLyrics(track.title, track.artist, track.duration || 0);
+          const data = await fetchLyrics(
+            track.title,
+            track.artist,
+            track.duration || 0,
+            track.id || ""
+          );
           set({ lyrics: data, lyricsLoading: false });
         } catch {
           set({ lyricsLoading: false });
