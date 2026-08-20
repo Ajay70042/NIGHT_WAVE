@@ -78,6 +78,10 @@ export async function resolveStream(videoId) {
   };
 }
 
+export function getAudioStreamUrl(videoId) {
+  return `${BASE}/stream/audio?id=${encodeURIComponent(videoId)}`;
+}
+
 export async function fetchLyrics(title, artist, duration = 0, videoId = "") {
   const params = new URLSearchParams({
     title,
