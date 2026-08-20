@@ -61,9 +61,19 @@ function rowReducer(state, { key, type, tracks }) {
 
 // ─── Component ───────────────────────────────────────────────────
 export default function BrowseView() {
-  const { history, currentTrack, favorites } = usePlayerStore();
+  const { history, currentTrack, favorites, playCounts } = usePlayerStore();
   const [rows, dispatch] = useReducer(rowReducer, initialRowState);
   const [activeFilter, setActiveFilter] = useState("all");
+
+  // Derive most played tracks sorted by playCount descending
+  const mostPlayedTracks = Object.values(playCounts || {})
+    .filter((item) => item?.count >= 1 && item?.track)
+    .sort((a, b) => b.count - a.count)
+    .map((item) => ({
+      ...item.track,
+      playCount: item.count,
+    }))
+    .slice(0, 15);
 
   useEffect(() => {
     // When filter changes, we could re-fetch. For now, fetch default rows on mount.
@@ -152,11 +162,24 @@ export default function BrowseView() {
           </div>
         )}
 
+        {/* ── On Repeat (Most Played) ─────────────────────────── */}
+        {mostPlayedTracks.length > 0 && activeFilter === "all" && (
+          <div className="mb-10">
+            <TrackRow
+              title="On Repeat (Most Played)"
+              emoji="🔁"
+              tracks={mostPlayedTracks}
+              loading={false}
+            />
+          </div>
+        )}
+
         {/* ── Recently Played ──────────────────────────────────── */}
         {history.length > 0 && activeFilter === "all" && (
           <div className="mb-10">
             <TrackRow
               title="Recently Played"
+              emoji="🕒"
               tracks={history.slice(0, 15)}
               loading={false}
             />
@@ -168,6 +191,7 @@ export default function BrowseView() {
           <div className="mb-10">
             <TrackRow
               title="Your Favorites"
+              emoji="❤️"
               tracks={favorites}
               loading={false}
             />

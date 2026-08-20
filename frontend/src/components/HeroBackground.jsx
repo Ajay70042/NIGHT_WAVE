@@ -442,8 +442,128 @@ function CyberDawnScene() {
   );
 }
 
+// ─── Scene: Song Reactive Aurora ───────────────────────────────
+const SONG_PALETTES = [
+  {
+    bg: "#06040d",
+    c1: "rgba(168, 85, 247, 0.45)", // Purple
+    c2: "rgba(236, 72, 153, 0.40)", // Pink
+    c3: "rgba(6, 182, 212, 0.35)",  // Cyan
+    c4: "rgba(163, 230, 53, 0.30)", // Lime
+  },
+  {
+    bg: "#080312",
+    c1: "rgba(244, 63, 94, 0.45)",  // Rose
+    c2: "rgba(139, 92, 246, 0.40)", // Violet
+    c3: "rgba(56, 189, 248, 0.35)", // Sky
+    c4: "rgba(251, 191, 36, 0.30)", // Amber
+  },
+  {
+    bg: "#020a0f",
+    c1: "rgba(16, 185, 129, 0.45)", // Emerald
+    c2: "rgba(6, 182, 212, 0.40)",  // Cyan
+    c3: "rgba(99, 102, 241, 0.35)", // Indigo
+    c4: "rgba(52, 211, 153, 0.30)", // Mint
+  },
+  {
+    bg: "#0d0406",
+    c1: "rgba(249, 115, 22, 0.45)", // Orange
+    c2: "rgba(239, 68, 68, 0.40)",  // Red
+    c3: "rgba(217, 70, 239, 0.35)", // Fuchsia
+    c4: "rgba(234, 179, 8, 0.30)",  // Yellow
+  },
+  {
+    bg: "#030717",
+    c1: "rgba(59, 130, 246, 0.45)", // Blue
+    c2: "rgba(147, 51, 234, 0.40)", // Purple
+    c3: "rgba(244, 114, 182, 0.35)",// Pink
+    c4: "rgba(45, 212, 191, 0.30)", // Teal
+  },
+];
+
+function SongReactiveAuroraScene() {
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+
+  // Hash track id/title to pick a consistent, vibrant palette
+  const key = currentTrack?.id || currentTrack?.title || "nightwave";
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash << 5) - hash + key.charCodeAt(i);
+    hash |= 0;
+  }
+  const palette = SONG_PALETTES[Math.abs(hash) % SONG_PALETTES.length];
+
+  return (
+    <div
+      className="absolute inset-0 overflow-hidden transition-colors duration-1000"
+      style={{ background: palette.bg }}
+    >
+      {/* 4 Fluid animated mesh orbs */}
+      <div
+        className={`absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full filter blur-[80px] pointer-events-none transition-all duration-1000 ${
+          isPlaying ? "animate-aurora-mesh opacity-80" : "opacity-40"
+        }`}
+        style={{
+          background: `radial-gradient(circle, ${palette.c1} 0%, transparent 70%)`,
+        }}
+      />
+
+      <div
+        className={`absolute -bottom-[20%] -right-[10%] w-[75vw] h-[75vw] rounded-full filter blur-[90px] pointer-events-none transition-all duration-1000 ${
+          isPlaying ? "animate-aurora-mesh opacity-75" : "opacity-40"
+        }`}
+        style={{
+          background: `radial-gradient(circle, ${palette.c2} 0%, transparent 70%)`,
+          animationDirection: "reverse",
+          animationDuration: "26s",
+        }}
+      />
+
+      <div
+        className={`absolute top-[25%] right-[15%] w-[55vw] h-[55vw] rounded-full filter blur-[85px] pointer-events-none transition-all duration-1000 ${
+          isPlaying ? "animate-aurora-mesh opacity-70" : "opacity-35"
+        }`}
+        style={{
+          background: `radial-gradient(circle, ${palette.c3} 0%, transparent 70%)`,
+          animationDuration: "22s",
+        }}
+      />
+
+      <div
+        className={`absolute bottom-[10%] left-[20%] w-[50vw] h-[50vw] rounded-full filter blur-[75px] pointer-events-none transition-all duration-1000 ${
+          isPlaying ? "animate-aurora-mesh opacity-65" : "opacity-30"
+        }`}
+        style={{
+          background: `radial-gradient(circle, ${palette.c4} 0%, transparent 70%)`,
+          animationDuration: "30s",
+        }}
+      />
+
+      {/* Floating stars */}
+      {STARS.slice(0, 50).map((s, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: `${s.x}%`,
+            top: `${s.y}%`,
+            width: s.size,
+            height: s.size,
+            borderRadius: "50%",
+            background: "#fff",
+            opacity: s.opacity * 0.5,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ─── Scene registry ──────────────────────────────────────────────
 const SCENE_COMPONENTS = {
+  "song-aurora":    SongReactiveAuroraScene,
   "night-drive":    NightDriveScene,
   "rainy-window":   RainyWindowScene,
   "tokyo-midnight": TokyoMidnightScene,

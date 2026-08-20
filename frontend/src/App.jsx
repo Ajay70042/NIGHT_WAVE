@@ -81,14 +81,14 @@ export default function App() {
       {/* ── View layer ── */}
       {isCinematic ? (
         /* Cinematic overlay — full screen ambient mode */
-        <CinematicView />
+        <CinematicView seek={seek} />
       ) : (
         /* Browse home — default view */
         <BrowseView />
       )}
 
-      {/* ── Persistent overlays (both modes) ── */}
-      <PlayerBar seek={seek} />
+      {/* ── Persistent overlays ── */}
+      {!isCinematic && <PlayerBar seek={seek} />}
       <QueueDrawer />
       <LyricsView seek={seek} />
       <SearchModal />

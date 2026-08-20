@@ -41,10 +41,18 @@ This document outlines the planned features, enhancements, and tasks to execute 
 
 ---
 
-## 📱 5. UX, Mobile & Media Session Controls (Completed)
-- [x] **Media Session API:** Hook into OS lock-screen / notification controls (play, pause, next, artwork on mobile & Windows media overlays).
-- [x] **Mobile Responsive Polish:** Ensure the bottom player bar, search modal, queue drawer, and lyrics panel fit screens of all sizes.
-- [x] **Local Storage Favorites & History:** Ability to "Heart" tracks and save recent listening history locally.
+## 🔍 6. Search History & "On Repeat" Top Tracks (Completed)
+- [x] **Persistent Search History:** Track and save user search queries with 1-click re-search and individual delete/clear controls.
+- [x] **Trending Search Tags:** Quick-click tags for trending genres and artists.
+- [x] **"On Repeat" (Most Played Songs) Row:** Automatically tracks song play counts and displays your top-played songs in a dedicated row on the home feed with `🔥 N plays` badges.
+
+---
+
+## 🎨 7. Dynamic Song-Reactive Aurora & Floating Karaoke Lyrics (Completed)
+- [x] **Song-Reactive Dynamic Backgrounds (`Song Reactive 🌈`):** Fluid animated mesh aurora that automatically extracts and morphs vibrant color palettes tailored to each song.
+- [x] **Floating Multi-Color Synced Lyrics:** Active singing line features unique glowing neon colors on each word with wave micro-animations (`animate-word-float`) and zero boxiness.
+- [x] **Redesigned Floating Player Dock:** Modern frosted glass dock with tactile controls, glowing hero play button, and micro seekbar.
+- [x] **Clean Self-Contained Cinema Mode:** Removed bottom pill in Cinema mode, replaced with integrated left-column controls and seekbar.
 
 ---
 *Created on: August 19, 2026*

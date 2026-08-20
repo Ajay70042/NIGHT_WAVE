@@ -59,6 +59,14 @@ export default function BrowseCard({ track }) {
           </div>
         </div>
 
+        {/* Play count badge */}
+        {track.playCount && track.playCount > 1 && (
+          <div className="absolute bottom-2 left-2 bg-black/80 backdrop-blur-md px-1.5 py-0.5 rounded-md border border-white/10 text-[10px] font-semibold text-accent flex items-center gap-1 shadow-md">
+            <span>🔥</span>
+            <span>{track.playCount} plays</span>
+          </div>
+        )}
+
         {/* Active indicator dot */}
         {isActive && (
           <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent shadow-[0_0_8px_rgba(163,230,53,0.8)]" />

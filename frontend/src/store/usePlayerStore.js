@@ -12,6 +12,8 @@ const usePlayerStore = create(
       queue: [],
       history: [],
       favorites: [],
+      searchHistory: [],
+      playCounts: {}, // { [trackId]: { count: number, track: Track, lastPlayed: number } }
 
       // ── Autoplay state ───────────────────────────────────────────
       isAutoplay: true,
@@ -37,7 +39,7 @@ const usePlayerStore = create(
       isLyricsOpen: false,
 
       // ── Scene ────────────────────────────────────────────────────
-      activeScene: "night-drive",
+      activeScene: "song-aurora",
 
       // ── View mode ────────────────────────────────────────────────
       isCinematic: false,
@@ -58,6 +60,21 @@ const usePlayerStore = create(
         set((s) => ({ ambientLevels: { ...s.ambientLevels, [key]: val } })),
       toggleLyrics: () => set((s) => ({ isLyricsOpen: !s.isLyricsOpen, isQueueOpen: false })),
       toggleCinematic: () => set((s) => ({ isCinematic: !s.isCinematic })),
+
+      // Search history actions
+      addSearchHistory: (query) => {
+        const q = (query || "").trim();
+        if (!q) return;
+        set((s) => ({
+          searchHistory: [q, ...(s.searchHistory || []).filter((item) => item.toLowerCase() !== q.toLowerCase())].slice(0, 20),
+        }));
+      },
+      removeSearchHistoryItem: (query) => {
+        set((s) => ({
+          searchHistory: (s.searchHistory || []).filter((item) => item.toLowerCase() !== (query || "").toLowerCase()),
+        }));
+      },
+      clearSearchHistory: () => set({ searchHistory: [] }),
 
       setProgress: (p) => set({ progress: p }),
       setDuration: (d) => set({ duration: d }),
@@ -83,7 +100,7 @@ const usePlayerStore = create(
       // Play a track — instantly updates playback state and signals audio engine via streamUrl
       playTrack: (track) => {
         if (!track || !track.id) return;
-        const { currentTrack } = get();
+        const { currentTrack, playCounts } = get();
 
         // Push previous track to history if different
         if (currentTrack && currentTrack.id !== track.id) {
@@ -91,6 +108,22 @@ const usePlayerStore = create(
             history: [s.currentTrack, ...s.history.filter((t) => t.id !== s.currentTrack.id)].slice(0, 50),
           }));
         }
+
+        // Increment play count for On Repeat / Most Played
+        const existing = playCounts?.[track.id];
+        const newCount = (existing?.count || 0) + 1;
+        const updatedTrack = { ...track, playCount: newCount };
+
+        set((s) => ({
+          playCounts: {
+            ...(s.playCounts || {}),
+            [track.id]: {
+              count: newCount,
+              track: updatedTrack,
+              lastPlayed: Date.now(),
+            },
+          },
+        }));
 
         // Remove track from upcoming queues since it is now the active playing track
         set((s) => ({
@@ -266,6 +299,8 @@ const usePlayerStore = create(
         history: state.history,
         favorites: state.favorites,
         isAutoplay: state.isAutoplay,
+        searchHistory: state.searchHistory,
+        playCounts: state.playCounts,
       }),
     }
   )

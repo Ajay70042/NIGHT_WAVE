@@ -26,13 +26,18 @@ export default function LyricsView({ seek }) {
 
   const activeIdx = getActiveLine();
 
-  // Auto-scroll active line into center smoothly
+  const prevIdxRef = useRef(-1);
+
+  // Auto-scroll active line into center smoothly only when index changes
   useEffect(() => {
-    if (activeLineRef.current && containerRef.current) {
-      const container = containerRef.current;
-      const el = activeLineRef.current;
-      const offset = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
-      container.scrollTo({ top: offset, behavior: "smooth" });
+    if (activeIdx !== prevIdxRef.current && activeIdx >= 0) {
+      prevIdxRef.current = activeIdx;
+      if (activeLineRef.current) {
+        activeLineRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
     }
   }, [activeIdx]);
 
@@ -53,17 +58,17 @@ export default function LyricsView({ seek }) {
       <div
         className={`
           fixed top-0 right-0 bottom-[100px] z-40 w-full sm:w-96
-          glass-strong border-l border-white/[0.06]
-          flex flex-col
+          bg-black/35 backdrop-blur-2xl border-l border-white/10
+          flex flex-col shadow-2xl
           transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
           ${isLyricsOpen ? "translate-x-0" : "translate-x-full"}
         `}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
           <div className="flex items-center gap-2">
             <Mic2 className="w-4 h-4 text-accent" />
-            <h2 className="text-sm font-semibold text-white">Lyrics</h2>
+            <h2 className="text-sm font-semibold text-white">Live Lyrics</h2>
             {lyrics?.synced && (
               <span className="flex items-center gap-1 text-[10px] font-medium bg-accent/15 text-accent border border-accent/20 px-2 py-0.5 rounded-full">
                 <Sparkles className="w-2.5 h-2.5" />
@@ -82,8 +87,8 @@ export default function LyricsView({ seek }) {
 
         {/* Track context */}
         {currentTrack && (
-          <div className="px-5 py-2.5 border-b border-white/[0.04] bg-white/[0.01]">
-            <p className="text-xs font-medium text-white/80 truncate">{currentTrack.title}</p>
+          <div className="px-5 py-2.5 border-b border-white/[0.06] bg-white/[0.02]">
+            <p className="text-xs font-semibold text-white/90 truncate">{currentTrack.title}</p>
             <p className="text-[11px] text-white/40 truncate">{currentTrack.artist || "Unknown Artist"}</p>
           </div>
         )}
@@ -128,7 +133,7 @@ export default function LyricsView({ seek }) {
 
           {/* Synced lyrics (Karaoke mode) */}
           {!lyricsLoading && lyrics?.synced && lyrics.lines && (
-            <div className="flex flex-col gap-1.5 pb-36">
+            <div className="flex flex-col gap-3 pb-36">
               {/* Top spacer so first line centers */}
               <div style={{ height: "35vh" }} />
 
@@ -141,20 +146,21 @@ export default function LyricsView({ seek }) {
                     key={i}
                     ref={isActive ? activeLineRef : null}
                     onClick={() => handleLineClick(line.time)}
-                    className={`
-                      w-full text-left py-2 px-3 rounded-xl transition-all duration-300 ease-out group text-left
-                      ${isActive
-                        ? "text-white text-[19px] leading-snug font-bold scale-[1.03] text-glow-lime bg-white/[0.04]"
-                        : isPast
-                        ? "text-white/20 text-[16px] font-medium hover:text-white/50"
-                        : "text-white/40 text-[16px] font-medium hover:text-white/70"
-                      }
-                    `}
-                    style={{
-                      transformOrigin: "left center",
-                    }}
+                    className="w-full text-left py-1.5 px-2 select-none transition-all duration-200 group"
                   >
-                    <span className="block">{line.text}</span>
+                    {isActive ? (
+                      <span className="text-[20px] leading-snug font-extrabold text-white text-glow-lime block">
+                        {line.text}
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[15px] font-semibold transition-colors duration-200 block ${
+                          isPast ? "text-white/20 hover:text-white/50" : "text-white/40 hover:text-white/70"
+                        }`}
+                      >
+                        {line.text}
+                      </span>
+                    )}
                   </button>
                 );
               })}

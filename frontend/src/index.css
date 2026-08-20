@@ -214,3 +214,65 @@ input[type="range"]::-webkit-slider-runnable-track {
 .ambient-range-vinyl::-webkit-slider-thumb { background: #a3e635; }
 .ambient-range-engine::-webkit-slider-thumb { background: #fb923c; }
 
+/* ─── Rainbow Text & Floating Word Animations ────────────────── */
+@keyframes rainbowFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.rainbow-text {
+  background: linear-gradient(
+    90deg,
+    #ff6b6b,
+    #feca57,
+    #48dbfb,
+    #ff9ff3,
+    #54a0ff,
+    #1dd1a1,
+    #ff6b6b
+  );
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rainbowFlow 5s ease infinite;
+}
+
+@keyframes wordFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(0.8deg);
+  }
+}
+
+.animate-word-float {
+  display: inline-block;
+  animation: wordFloat 3s ease-in-out infinite;
+}
+
+@keyframes auroraMesh {
+  0% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(30px, -40px) scale(1.12) rotate(120deg);
+  }
+  66% {
+    transform: translate(-30px, 20px) scale(0.92) rotate(240deg);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1) rotate(360deg);
+  }
+}
+
+.animate-aurora-mesh {
+  animation: auroraMesh 20s ease-in-out infinite alternate;
+}
+
+.glow-capsule {
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.8), 0 0 20px -2px rgba(163, 230, 53, 0.15);
+}
+
+
