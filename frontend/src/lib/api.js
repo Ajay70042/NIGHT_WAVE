@@ -1,12 +1,27 @@
+import { Capacitor } from "@capacitor/core";
+
 let rawBase = (import.meta.env.VITE_API_URL || "").trim();
 // Strip surrounding quotes if entered with quotes in Vercel UI
 rawBase = rawBase.replace(/^["']+|["']+$/g, "").trim();
+
+// Detect if running inside native Android/iOS app or capacitor webview
+const isNativeApp =
+  typeof window !== "undefined" &&
+  (Capacitor.isNativePlatform() ||
+    window.location.protocol === "capacitor:" ||
+    (window.location.hostname === "localhost" &&
+      window.location.port !== "5173" &&
+      window.location.port !== "3000"));
+
+const DEFAULT_PROD_API = "https://nightwave-api.onrender.com/api";
 
 const BASE = rawBase
   ? rawBase.replace(/\/+$/, "").endsWith("/api")
     ? rawBase.replace(/\/+$/, "")
     : `${rawBase.replace(/\/+$/, "")}/api`
-  : "/api";
+  : isNativeApp
+    ? DEFAULT_PROD_API
+    : "/api";
 
 /**
  * Helper to fetch with retry for Render free-tier cold starts

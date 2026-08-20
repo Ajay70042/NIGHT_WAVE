@@ -14,12 +14,15 @@ export default function BrowseTopBar() {
       className="
         fixed top-0 left-0 right-0 z-30
         flex items-center justify-between
-        px-5 sm:px-8 py-4
+        px-5 sm:px-8
       "
       style={{
+        paddingTop: "calc(12px + env(safe-area-inset-top, 0px))",
+        paddingBottom: "12px",
         background:
-          "linear-gradient(to bottom, rgba(8,8,14,0.92) 0%, rgba(8,8,14,0.7) 70%, transparent 100%)",
-        backdropFilter: "blur(0px)",
+          "linear-gradient(to bottom, rgba(8,8,14,0.95) 0%, rgba(8,8,14,0.8) 70%, transparent 100%)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
       }}
     >
       {/* Logo */}

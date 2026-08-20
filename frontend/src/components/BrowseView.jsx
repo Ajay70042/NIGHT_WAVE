@@ -108,7 +108,10 @@ export default function BrowseView() {
                 "Night owl";
 
   return (
-    <div className="relative flex flex-col h-screen overflow-hidden bg-obsidian">
+    <div
+      className="relative flex flex-col w-full overflow-hidden bg-obsidian"
+      style={{ height: "100%", minHeight: "100dvh" }}
+    >
       {/* Subtle background glow */}
       <div
         className="fixed inset-0 pointer-events-none"
@@ -122,7 +125,12 @@ export default function BrowseView() {
 
       <div
         className="relative z-10 flex-1 overflow-y-auto"
-        style={{ paddingTop: "72px", paddingBottom: "130px", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}
+        style={{
+          paddingTop: "calc(68px + env(safe-area-inset-top, 0px))",
+          paddingBottom: "calc(130px + env(safe-area-inset-bottom, 16px))",
+          scrollbarWidth: "thin",
+          scrollbarColor: "rgba(255,255,255,0.08) transparent",
+        }}
       >
         {/* ── Greeting ──────────────────────────────────────────── */}
         <div className="px-5 sm:px-8 pt-2 pb-3">
