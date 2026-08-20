@@ -4,8 +4,12 @@ Returns suggested tracks based on the provided video ID via ytmusicapi radio fea
 """
 from fastapi import APIRouter, Query, HTTPException
 from ytmusicapi import YTMusic
-from backend.routes.search import _best_thumbnail, _parse_duration
-from backend.cache import get_suggestions, set_suggestions
+try:
+    from backend.routes.search import _best_thumbnail, _parse_duration
+    from backend.cache import get_suggestions, set_suggestions
+except ImportError:
+    from routes.search import _best_thumbnail, _parse_duration
+    from cache import get_suggestions, set_suggestions
 
 router = APIRouter()
 _ytm = YTMusic()

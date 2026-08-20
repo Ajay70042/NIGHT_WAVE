@@ -10,7 +10,10 @@ import asyncio
 import sys
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import RedirectResponse
-from backend.cache import get_stream, set_stream
+try:
+    from backend.cache import get_stream, set_stream
+except ImportError:
+    from cache import get_stream, set_stream
 
 router = APIRouter()
 

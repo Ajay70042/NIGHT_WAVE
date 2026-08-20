@@ -44,7 +44,7 @@ export default function SearchModal() {
       const tracks = await searchTracks(q, 20);
       setResults(Array.isArray(tracks) ? tracks : []);
     } catch (err) {
-      setError("Search failed. Is the backend running?");
+      setError(err.message || "Search failed. Is the backend running?");
     } finally {
       setLoading(false);
     }

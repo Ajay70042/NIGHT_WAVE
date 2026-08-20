@@ -12,7 +12,10 @@ Returns:
 import re
 import httpx
 from fastapi import APIRouter, Query
-from backend.cache import get_lyrics, set_lyrics
+try:
+    from backend.cache import get_lyrics, set_lyrics
+except ImportError:
+    from cache import get_lyrics, set_lyrics
 
 router = APIRouter()
 LRCLIB_BASE = "https://lrclib.net/api"
