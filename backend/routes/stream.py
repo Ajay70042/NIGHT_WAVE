@@ -17,15 +17,19 @@ router = APIRouter()
 
 
 async def _resolve(video_id: str) -> dict:
-    """Run yt-dlp to get the best audio stream URL + metadata."""
+    """Run yt-dlp to get the best audio stream URL + metadata using android/ios clients (no JS challenge required)."""
     def _extract_sync():
         import yt_dlp
         url = f"https://www.youtube.com/watch?v={video_id}"
         ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
             "quiet": True,
             "no_warnings": True,
-            "remote_components": ["ejs:github"],
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "web_creator", "mweb"]
+                }
+            },
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
