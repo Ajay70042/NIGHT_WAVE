@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
-    "lint": "npm --prefix frontend run lint"
+    "lint": "npm --prefix frontend run lint",
+    "android": "npm --prefix frontend run cap:open",
+    "cap:sync": "npm --prefix frontend run cap:sync"
   },
   "workspaces": [
     "frontend"

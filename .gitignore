@@ -43,3 +43,13 @@ yarn-error.log*
 .idea/
 .vscode/
 Thumbs.db
+
+# Android / Capacitor
+.gradle/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/android/local.properties
+**/android/Captures/
+*.apk
+*.aab
