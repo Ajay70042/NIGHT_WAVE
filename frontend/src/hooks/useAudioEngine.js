@@ -1,8 +1,8 @@
 /**
- * useAudioEngine — Ultra-Fast Playback Engine with Perfect Synced Lyrics & Status Bar
+ * useAudioEngine — Unified Audio Playback Engine
  *
- * Designed for instant 0ms track startup, reliable 50ms progress tracking,
- * smooth lyrics scrolling, and full seekbar synchronization.
+ * Guaranteed 100% React Hooks compliant (no conditional hook branching).
+ * Handles instant track startup, 50ms progress ticker, lyrics sync, and lock screen media keys.
  */
 import { useEffect, useRef, useCallback } from "react";
 import { Capacitor } from "@capacitor/core";
@@ -13,6 +13,7 @@ const IS_NATIVE = Capacitor.isNativePlatform();
 
 // ── Load YouTube IFrame API once ──────────────────────────────────────────────
 function loadYTScript() {
+  if (typeof window === "undefined") return;
   if (window.YT || document.getElementById("yt-iframe-api")) return;
   const tag = document.createElement("script");
   tag.id = "yt-iframe-api";
@@ -21,23 +22,13 @@ function loadYTScript() {
 }
 
 export function useAudioEngine() {
-  const analyserRef = useRef(null);
-
-  if (IS_NATIVE) {
-    return useNativeAudioEngine(analyserRef);
-  } else {
-    return useYouTubeEngine(analyserRef);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PC / BROWSER ENGINE — High-Performance YouTube IFrame Engine
-// ═══════════════════════════════════════════════════════════════════════════════
-function useYouTubeEngine(analyserRef) {
+  const analyserRef    = useRef(null);
   const playerRef      = useRef(null);
   const readyRef       = useRef(false);
   const pendingIdRef   = useRef(null);
   const wakeLockRef    = useRef(null);
+  const nativeAudioRef = useRef(null);
+  const loadedIdRef    = useRef(null);
 
   const {
     streamUrl,
@@ -52,7 +43,9 @@ function useYouTubeEngine(analyserRef) {
     repeatMode,
   } = usePlayerStore();
 
-  // ── Screen Wake Lock (prevents monitor sleep while playing) ────────────────
+  const playTimestamp = usePlayerStore((s) => s.playTimestamp);
+
+  // ── Screen Wake Lock ────────────────────────────────────────────────────────
   const requestWakeLock = useCallback(async () => {
     if ("wakeLock" in navigator && !wakeLockRef.current && document.visibilityState === "visible") {
       try {
@@ -69,9 +62,56 @@ function useYouTubeEngine(analyserRef) {
     }
   }, []);
 
-  // ── Initialize YouTube IFrame ─────────────────────────────────────────────
+  // ── 1. Native Audio Setup (Android/iOS only) ────────────────────────────────
   useEffect(() => {
-    // 1px visible container (NOT opacity:0 / z-index:-9999 so Chrome does not throttle audio)
+    if (!IS_NATIVE) return;
+
+    let audio = document.getElementById("nightwave-native-audio");
+    if (!audio) {
+      audio = document.createElement("audio");
+      audio.id = "nightwave-native-audio";
+      audio.preload = "auto";
+      audio.setAttribute("playsinline", "true");
+      audio.crossOrigin = "anonymous";
+      audio.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;";
+      document.body.appendChild(audio);
+    }
+    nativeAudioRef.current = audio;
+
+    const onDuration = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        usePlayerStore.getState().setDuration(audio.duration);
+      }
+    };
+    const onEnded = () => {
+      const rm = usePlayerStore.getState().repeatMode;
+      if (rm === "one") {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      } else {
+        usePlayerStore.getState().next();
+      }
+    };
+    const onPlay = () => usePlayerStore.getState().setIsPlaying(true);
+    const onPause = () => usePlayerStore.getState().setIsPlaying(false);
+
+    audio.addEventListener("durationchange", onDuration);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+
+    return () => {
+      audio.removeEventListener("durationchange", onDuration);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+    };
+  }, []);
+
+  // ── 2. YouTube IFrame Player Setup (PC / Web) ──────────────────────────────
+  useEffect(() => {
+    if (IS_NATIVE) return;
+
     let container = document.getElementById("yt-player-container");
     if (!container) {
       container = document.createElement("div");
@@ -132,7 +172,6 @@ function useYouTubeEngine(analyserRef) {
                 try { player.playVideo(); } catch (_) {}
               }
             } else if (e.data === 5 || e.data === -1) {
-              // Video was cued/unstarted — automatically force playback immediately!
               if (usePlayerStore.getState().isPlaying) {
                 try { player.playVideo(); } catch (_) {}
               }
@@ -160,7 +199,6 @@ function useYouTubeEngine(analyserRef) {
       tryInitPlayer();
     } else {
       window.onYouTubeIframeAPIReady = tryInitPlayer;
-      // Backup poller in case onYouTubeIframeAPIReady already fired
       const pollInterval = setInterval(() => {
         if (window.YT && window.YT.Player) {
           clearInterval(pollInterval);
@@ -171,75 +209,105 @@ function useYouTubeEngine(analyserRef) {
     }
   }, []);
 
-  // ── Instant Song Startup on streamUrl / playTimestamp change ───────────────
-  const playTimestamp = usePlayerStore((s) => s.playTimestamp);
-
+  // ── 3. Load & Play Track on Selection ───────────────────────────────────────
   useEffect(() => {
     if (!streamUrl) return;
     const videoId = streamUrl;
 
-    if (!readyRef.current || !playerRef.current) {
-      pendingIdRef.current = videoId;
-      return;
-    }
-
-    try {
-      playerRef.current.loadVideoById({ videoId, startSeconds: 0 });
-      playerRef.current.playVideo();
-      usePlayerStore.getState().setIsPlaying(true);
-    } catch (e) {
-      console.warn("loadVideoById error:", e);
+    if (IS_NATIVE) {
+      const audio = nativeAudioRef.current;
+      if (!audio) return;
+      if (loadedIdRef.current === videoId) {
+        audio.play().catch(() => {});
+        return;
+      }
+      loadedIdRef.current = videoId;
+      audio.src = getAudioStreamUrl(videoId);
+      audio.load();
+      audio.play().catch(() => {});
+    } else {
+      if (!readyRef.current || !playerRef.current) {
+        pendingIdRef.current = videoId;
+        return;
+      }
+      try {
+        playerRef.current.loadVideoById({ videoId, startSeconds: 0 });
+        playerRef.current.playVideo();
+        usePlayerStore.getState().setIsPlaying(true);
+      } catch (e) {
+        console.warn("loadVideoById error:", e);
+      }
     }
   }, [streamUrl, playTimestamp]);
 
-  // ── Play / Pause Sync ──────────────────────────────────────────────────────
+  // ── 4. Play / Pause Synchronization ───────────────────────────────────────
   useEffect(() => {
-    const p = playerRef.current;
-    if (!p || !readyRef.current) return;
-
-    if (isPlaying) {
-      try { p.playVideo(); } catch (_) {}
-      requestWakeLock();
+    if (IS_NATIVE) {
+      const audio = nativeAudioRef.current;
+      if (!audio) return;
+      if (isPlaying) {
+        audio.play().catch(() => {});
+      } else {
+        audio.pause();
+      }
     } else {
-      try { p.pauseVideo(); } catch (_) {}
-      releaseWakeLock();
+      const p = playerRef.current;
+      if (!p || !readyRef.current) return;
+      if (isPlaying) {
+        try { p.playVideo(); } catch (_) {}
+        requestWakeLock();
+      } else {
+        try { p.pauseVideo(); } catch (_) {}
+        releaseWakeLock();
+      }
     }
   }, [isPlaying, requestWakeLock, releaseWakeLock]);
 
-  // ── Volume Control ────────────────────────────────────────────────────────
+  // ── 5. Volume Control ─────────────────────────────────────────────────────
   useEffect(() => {
-    const p = playerRef.current;
-    if (!p || !readyRef.current) return;
-    try {
-      p.setVolume(Math.round((isMuted ? 0 : volume) * 100));
-    } catch (_) {}
-  }, [volume, isMuted]);
-
-  // ── High-Precision 50ms Progress Ticker (Updates Status Bar & Lyrics) ─────
-  useEffect(() => {
-    const interval = setInterval(() => {
+    if (IS_NATIVE) {
+      const audio = nativeAudioRef.current;
+      if (!audio) return;
+      audio.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+    } else {
       const p = playerRef.current;
       if (!p || !readyRef.current) return;
-
       try {
-        const t = p.getCurrentTime?.();
-        if (typeof t === "number" && !isNaN(t) && t >= 0) {
-          setProgress(t);
-        }
-
-        const dur = p.getDuration?.();
-        if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
-          if (usePlayerStore.getState().duration !== dur) {
-            usePlayerStore.getState().setDuration(dur);
-          }
-        }
+        p.setVolume(Math.round((isMuted ? 0 : volume) * 100));
       } catch (_) {}
+    }
+  }, [volume, isMuted]);
+
+  // ── 6. 50ms High-Precision Progress Ticker ────────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (IS_NATIVE) {
+        const audio = nativeAudioRef.current;
+        if (!audio || audio.paused) return;
+        const t = audio.currentTime;
+        if (t >= 0) setProgress(t);
+      } else {
+        const p = playerRef.current;
+        if (!p || !readyRef.current) return;
+        try {
+          const t = p.getCurrentTime?.();
+          if (typeof t === "number" && !isNaN(t) && t >= 0) {
+            setProgress(t);
+          }
+          const dur = p.getDuration?.();
+          if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
+            if (usePlayerStore.getState().duration !== dur) {
+              usePlayerStore.getState().setDuration(dur);
+            }
+          }
+        } catch (_) {}
+      }
     }, 50);
 
     return () => clearInterval(interval);
   }, [setProgress]);
 
-  // ── MediaSession (PC Keyboard & Media Keys) ───────────────────────────────
+  // ── 7. MediaSession Keys ──────────────────────────────────────────────────
   useEffect(() => {
     if (!("mediaSession" in navigator) || !currentTrack) return;
     try {
@@ -263,142 +331,36 @@ function useYouTubeEngine(analyserRef) {
       safeSet("nexttrack", () => store.next());
       safeSet("stop", () => store.setIsPlaying(false));
       safeSet("seekto", (details) => {
-        if (details.seekTime != null && playerRef.current && readyRef.current) {
-          playerRef.current.seekTo(details.seekTime, true);
+        if (details.seekTime != null) {
+          if (IS_NATIVE && nativeAudioRef.current) {
+            nativeAudioRef.current.currentTime = details.seekTime;
+          } else if (playerRef.current && readyRef.current) {
+            playerRef.current.seekTo(details.seekTime, true);
+          }
           store.setProgress(details.seekTime);
         }
       });
     } catch (_) {}
   }, [currentTrack, isPlaying]);
 
-  // ── Seek ──────────────────────────────────────────────────────────────────
+  // ── 8. Seek Callback ──────────────────────────────────────────────────────
   const seek = useCallback((seconds) => {
-    const p = playerRef.current;
-    if (p && readyRef.current) {
-      try {
-        p.seekTo(seconds, true);
-        setProgress(seconds);
-      } catch (_) {}
-    }
-  }, [setProgress]);
-
-  return { analyser: analyserRef, seek };
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NATIVE ENGINE — Native HTML <audio> (Android / iOS only)
-// ═══════════════════════════════════════════════════════════════════════════════
-function useNativeAudioEngine(analyserRef) {
-  const audioRef = useRef(null);
-  const loadedIdRef = useRef(null);
-
-  const {
-    streamUrl,
-    currentTrack,
-    isPlaying,
-    volume,
-    isMuted,
-    setProgress,
-    setDuration,
-    setIsPlaying,
-    next,
-    repeatMode,
-  } = usePlayerStore();
-
-  useEffect(() => {
-    let audio = document.getElementById("nightwave-native-audio");
-    if (!audio) {
-      audio = document.createElement("audio");
-      audio.id = "nightwave-native-audio";
-      audio.preload = "auto";
-      audio.setAttribute("playsinline", "true");
-      audio.crossOrigin = "anonymous";
-      audio.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;";
-      document.body.appendChild(audio);
-    }
-    audioRef.current = audio;
-
-    const onDuration = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        usePlayerStore.getState().setDuration(audio.duration);
+    if (IS_NATIVE) {
+      const audio = nativeAudioRef.current;
+      if (audio) {
+        audio.currentTime = Math.max(0, seconds);
+        usePlayerStore.getState().setProgress(Math.max(0, seconds));
       }
-    };
-    const onEnded = () => {
-      const rm = usePlayerStore.getState().repeatMode;
-      if (rm === "one") {
-        audio.currentTime = 0;
-        audio.play().catch(() => {});
-      } else {
-        usePlayerStore.getState().next();
-      }
-    };
-    const onPlay = () => usePlayerStore.getState().setIsPlaying(true);
-    const onPause = () => usePlayerStore.getState().setIsPlaying(false);
-
-    audio.addEventListener("durationchange", onDuration);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
-
-    return () => {
-      audio.removeEventListener("durationchange", onDuration);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!streamUrl) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const videoId = streamUrl;
-    if (loadedIdRef.current === videoId) {
-      audio.play().catch(() => {});
-      return;
-    }
-
-    loadedIdRef.current = videoId;
-    audio.src = getAudioStreamUrl(videoId);
-    audio.load();
-    audio.play().catch(() => {});
-  }, [streamUrl]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-      audio.play().catch(() => {});
     } else {
-      audio.pause();
+      const p = playerRef.current;
+      if (p && readyRef.current) {
+        try {
+          p.seekTo(seconds, true);
+          setProgress(seconds);
+        } catch (_) {}
+      }
     }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
-  }, [volume, isMuted]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const audio = audioRef.current;
-      if (!audio || audio.paused) return;
-      const t = audio.currentTime;
-      if (t >= 0) setProgress(t);
-    }, 50);
-    return () => clearInterval(interval);
   }, [setProgress]);
-
-  const seek = useCallback((seconds) => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.currentTime = Math.max(0, seconds);
-      usePlayerStore.getState().setProgress(Math.max(0, seconds));
-    }
-  }, []);
 
   return { analyser: analyserRef, seek };
 }
