@@ -83,7 +83,7 @@ function useYouTubeEngine(analyserRef) {
 
     loadYTScript();
 
-    const initPlayer = () => {
+    const tryInitPlayer = () => {
       if (playerRef.current) return;
       if (!window.YT || !window.YT.Player) return;
 
@@ -95,12 +95,14 @@ function useYouTubeEngine(analyserRef) {
           autoplay: 1,
           controls: 0,
           disablekb: 1,
+          enablejsapi: 1,
           fs: 0,
           iv_load_policy: 3,
           modestbranding: 1,
           rel: 0,
           playsinline: 1,
           origin: window.location.origin,
+          widget_referrer: window.location.href,
         },
         events: {
           onReady: () => {
@@ -137,7 +139,6 @@ function useYouTubeEngine(analyserRef) {
           },
           onError: (e) => {
             console.warn("YouTube player error code:", e.data);
-            // On unplayable video (e.g. embed disabled / copyright), skip to next track
             if (e.data === 101 || e.data === 150 || e.data === 100 || e.data === 2 || e.data === 5) {
               setTimeout(() => usePlayerStore.getState().next(), 400);
             }
@@ -146,10 +147,18 @@ function useYouTubeEngine(analyserRef) {
       });
     };
 
-    if (window.YT?.Player) {
-      initPlayer();
+    if (window.YT && window.YT.Player) {
+      tryInitPlayer();
     } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
+      window.onYouTubeIframeAPIReady = tryInitPlayer;
+      // Backup poller in case onYouTubeIframeAPIReady already fired
+      const pollInterval = setInterval(() => {
+        if (window.YT && window.YT.Player) {
+          clearInterval(pollInterval);
+          tryInitPlayer();
+        }
+      }, 100);
+      setTimeout(() => clearInterval(pollInterval), 10000);
     }
   }, []);
 
