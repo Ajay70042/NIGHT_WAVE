@@ -41,8 +41,8 @@ export default function SearchModal() {
     setLoading(true);
     setError(null);
     try {
-      const data = await searchTracks(q, 20);
-      setResults(data.tracks || []);
+      const tracks = await searchTracks(q, 20);
+      setResults(Array.isArray(tracks) ? tracks : []);
     } catch (err) {
       setError("Search failed. Is the backend running?");
     } finally {
@@ -58,7 +58,7 @@ export default function SearchModal() {
   };
 
   const handleSelect = (track) => {
-    playTrack(track, true);
+    playTrack(track);
     closeSearch();
   };
 
@@ -127,7 +127,7 @@ export default function SearchModal() {
           )}
 
           {results.map((track) => (
-            <TrackCard key={track.id} track={track} />
+            <TrackCard key={track.id} track={track} onSelect={handleSelect} />
           ))}
         </div>
 

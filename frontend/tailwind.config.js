@@ -25,6 +25,11 @@ export default {
         "slide-right": "slide-right 0.35s cubic-bezier(0.16,1,0.3,1)",
         "fade-in": "fade-in 0.3s ease",
         marquee: "marquee 12s linear infinite",
+        "aurora-1": "aurora-1 10s ease-in-out infinite alternate",
+        "aurora-2": "aurora-2 14s ease-in-out infinite alternate",
+        "aurora-3": "aurora-3 8s ease-in-out infinite alternate",
+        "road-rush": "road-dash 1.8s linear infinite",
+        "scene-fade": "fade-in 0.4s ease",
       },
       keyframes: {
         "pulse-ring": {
@@ -46,6 +51,22 @@ export default {
         marquee: {
           "0%": { transform: "translateX(0)" },
           "100%": { transform: "translateX(-50%)" },
+        },
+        "road-dash": {
+          from: { top: "-15%" },
+          to: { top: "115%" },
+        },
+        "aurora-1": {
+          from: { transform: "translate(0,0) scale(1) rotate(0deg)" },
+          to: { transform: "translate(10%,5%) scale(1.15) rotate(5deg)" },
+        },
+        "aurora-2": {
+          from: { transform: "translate(0,0) scale(1.1) rotate(0deg)" },
+          to: { transform: "translate(-8%,8%) scale(1) rotate(-8deg)" },
+        },
+        "aurora-3": {
+          from: { transform: "translate(0,0) scale(1) rotate(0deg)" },
+          to: { transform: "translate(5%,-5%) scale(1.2) rotate(10deg)" },
         },
       },
       backdropBlur: { xs: "2px" },

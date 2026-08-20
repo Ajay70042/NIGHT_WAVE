@@ -28,12 +28,14 @@ function loadYTScript() {
 }
 
 export function useAudioEngine() {
-  const playerRef    = useRef(null);   // YT.Player instance
-  const containerRef = useRef(null);   // hidden div for iframe
-  const analyserRef  = useRef(null);   // dummy — keeps Visualizer happy
-  const animFrameRef = useRef(null);
-  const readyRef     = useRef(false);
-  const pendingIdRef = useRef(null);   // videoId to load when player is ready
+  const playerRef          = useRef(null);   // YT.Player instance
+  const containerRef       = useRef(null);   // hidden div for iframe
+  const analyserRef        = useRef(null);   // dummy — keeps Visualizer happy
+  const readyRef           = useRef(false);
+  const pendingIdRef       = useRef(null);   // videoId to load when player is ready
+  const switchingTrackRef  = useRef(false);  // prevents transient unload PAUSE from stopping playback
+  const intendedPlayingRef = useRef(false);  // tracks explicit user intent
+  const switchTimeoutRef   = useRef(null);
 
   const {
     streamUrl,          // we repurpose this as videoId
@@ -49,16 +51,20 @@ export function useAudioEngine() {
 
   // ── Create hidden iframe container in DOM ─────────────────────────────────
   useEffect(() => {
-    const div = document.createElement("div");
-    div.id = "yt-player-container";
-    div.style.cssText = "position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;visibility:hidden;";
-    document.body.appendChild(div);
+    let div = document.getElementById("yt-player-container");
+    if (!div) {
+      div = document.createElement("div");
+      div.id = "yt-player-container";
+      div.style.cssText = "position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;visibility:hidden;pointer-events:none;";
+      document.body.appendChild(div);
+    }
     containerRef.current = div;
 
     loadYTScript();
 
     // Initialize player when API is ready
     const initPlayer = () => {
+      if (playerRef.current) return;
       const player = new window.YT.Player(div, {
         width:  "1",
         height: "1",
@@ -81,19 +87,38 @@ export function useAudioEngine() {
             ));
             // Load any track that was queued before player was ready
             if (pendingIdRef.current) {
-              player.loadVideoById(pendingIdRef.current);
+              const vid = pendingIdRef.current;
               pendingIdRef.current = null;
+              switchingTrackRef.current = true;
+              intendedPlayingRef.current = true;
+              player.loadVideoById({ videoId: vid, startSeconds: 0 });
+              try { player.playVideo(); } catch (_) {}
             }
           },
           onStateChange: (e) => {
             const YT = window.YT.PlayerState;
             if (e.data === YT.PLAYING) {
+              switchingTrackRef.current = false;
+              intendedPlayingRef.current = true;
               usePlayerStore.getState().setIsPlaying(true);
               const dur = player.getDuration?.() || 0;
               if (dur > 0) usePlayerStore.getState().setDuration(dur);
+            } else if (e.data === YT.BUFFERING) {
+              // Buffering is normal loading state — keep playing intent active
+              if (intendedPlayingRef.current) {
+                usePlayerStore.getState().setIsPlaying(true);
+              }
             } else if (e.data === YT.PAUSED) {
-              usePlayerStore.getState().setIsPlaying(false);
+              // If we are currently transitioning to a new track, ignore transient unload PAUSE
+              if (switchingTrackRef.current) {
+                try { player.playVideo(); } catch (_) {}
+                return;
+              }
+              if (!intendedPlayingRef.current) {
+                usePlayerStore.getState().setIsPlaying(false);
+              }
             } else if (e.data === YT.ENDED) {
+              switchingTrackRef.current = false;
               const rm = usePlayerStore.getState().repeatMode;
               if (rm === "one") {
                 player.seekTo(0);
@@ -105,7 +130,14 @@ export function useAudioEngine() {
           },
           onError: (e) => {
             console.error("YT Player error:", e.data);
-            usePlayerStore.getState().setIsPlaying(false);
+            switchingTrackRef.current = false;
+            // On unplayable video (e.g. embed disabled 101/150 or not found 100), auto-skip immediately
+            if (e.data === 101 || e.data === 150 || e.data === 100 || e.data === 2) {
+              console.warn("Track cannot be played/embedded, auto-skipping to next...");
+              setTimeout(() => {
+                usePlayerStore.getState().next();
+              }, 300);
+            }
           },
         },
       });
@@ -119,16 +151,22 @@ export function useAudioEngine() {
     }
 
     return () => {
-      playerRef.current?.destroy?.();
-      div.remove();
+      // Keep singleton in memory
     };
   }, []);
 
   // ── Load new video when streamUrl (videoId) changes ───────────────────────
   useEffect(() => {
     if (!streamUrl) return;
-    // streamUrl now holds the video ID directly
     const videoId = streamUrl;
+
+    intendedPlayingRef.current = true;
+    switchingTrackRef.current = true;
+
+    if (switchTimeoutRef.current) clearTimeout(switchTimeoutRef.current);
+    switchTimeoutRef.current = setTimeout(() => {
+      switchingTrackRef.current = false;
+    }, 2500);
 
     if (!readyRef.current || !playerRef.current) {
       pendingIdRef.current = videoId;
@@ -136,7 +174,8 @@ export function useAudioEngine() {
     }
 
     try {
-      playerRef.current.loadVideoById(videoId);
+      playerRef.current.loadVideoById({ videoId, startSeconds: 0 });
+      playerRef.current.playVideo();
     } catch (e) {
       console.error("YT loadVideoById error:", e);
     }
@@ -144,8 +183,13 @@ export function useAudioEngine() {
 
   // ── Sync play/pause from Zustand ──────────────────────────────────────────
   useEffect(() => {
+    intendedPlayingRef.current = isPlaying;
     const p = playerRef.current;
     if (!p || !readyRef.current) return;
+
+    // If switching tracks, do not prematurely pause
+    if (switchingTrackRef.current && !isPlaying) return;
+
     try {
       if (isPlaying) p.playVideo();
       else p.pauseVideo();
@@ -161,24 +205,26 @@ export function useAudioEngine() {
     } catch (e) { /* ignore */ }
   }, [volume, isMuted]);
 
-  // ── Progress ticker ───────────────────────────────────────────────────────
+  // ── Progress ticker (200ms smooth updates) ────────────────────────────────
   useEffect(() => {
-    const tick = () => {
+    const interval = setInterval(() => {
       const p = playerRef.current;
       if (p && readyRef.current) {
         try {
-          const t = p.getCurrentTime?.() || 0;
-          if (t > 0) setProgress(t);
-          const dur = p.getDuration?.() || 0;
-          if (dur > 0 && usePlayerStore.getState().duration !== dur) {
-            usePlayerStore.getState().setDuration(dur);
+          const state = p.getPlayerState?.();
+          if (state === window.YT?.PlayerState?.PLAYING || state === window.YT?.PlayerState?.BUFFERING) {
+            const t = p.getCurrentTime?.() || 0;
+            if (t >= 0) setProgress(t);
+            const dur = p.getDuration?.() || 0;
+            if (dur > 0 && usePlayerStore.getState().duration !== dur) {
+              usePlayerStore.getState().setDuration(dur);
+            }
           }
         } catch (e) { /* ignore */ }
       }
-      animFrameRef.current = requestAnimationFrame(tick);
-    };
-    animFrameRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animFrameRef.current);
+    }, 200);
+
+    return () => clearInterval(interval);
   }, [setProgress]);
 
   // ── Seek ──────────────────────────────────────────────────────────────────

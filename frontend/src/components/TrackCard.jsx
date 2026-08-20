@@ -3,9 +3,17 @@ import { Play, Clock } from "lucide-react";
 import { formatTime } from "../lib/formatTime";
 import usePlayerStore from "../store/usePlayerStore";
 
-export default function TrackCard({ track, compact = false }) {
+export default function TrackCard({ track, compact = false, onSelect }) {
   const { playTrack, addToQueue, currentTrack } = usePlayerStore();
   const isActive = currentTrack?.id === track.id;
+
+  const handleClick = () => {
+    if (onSelect) {
+      onSelect(track);
+    } else {
+      playTrack(track);
+    }
+  };
 
   return (
     <div
@@ -15,10 +23,10 @@ export default function TrackCard({ track, compact = false }) {
         hover:bg-white/[0.07] active:bg-white/10
         ${isActive ? "bg-accent/10 ring-1 ring-accent/20" : ""}
       `}
-      onClick={() => playTrack(track, true)}
+      onClick={handleClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && playTrack(track, true)}
+      onKeyDown={(e) => e.key === "Enter" && handleClick()}
       aria-label={`Play ${track.title} by ${track.artist}`}
     >
       {/* Thumbnail */}

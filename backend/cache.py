@@ -8,9 +8,11 @@ from typing import Optional
 
 STREAM_TTL = 55 * 60  # 55 minutes (YouTube signed URLs expire at ~60 min)
 LYRICS_TTL = 24 * 60 * 60  # 24 hours
+SUGGESTIONS_TTL = 60 * 60  # 1 hour
 
 _stream_cache: dict[str, tuple[dict, float]] = {}
 _lyrics_cache: dict[str, tuple[dict, float]] = {}
+_suggestions_cache: dict[str, tuple[dict, float]] = {}
 _lock = Lock()
 
 
@@ -43,3 +45,12 @@ def get_lyrics(key: str) -> Optional[dict]:
 
 def set_lyrics(key: str, data: dict) -> None:
     _set(_lyrics_cache, key, data)
+
+
+def get_suggestions(video_id: str) -> Optional[dict]:
+    return _get(_suggestions_cache, video_id, SUGGESTIONS_TTL)
+
+
+def set_suggestions(video_id: str, data: dict) -> None:
+    _set(_suggestions_cache, video_id, data)
+

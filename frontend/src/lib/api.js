@@ -7,7 +7,8 @@ export async function searchTracks(query, limit = 20) {
     `${BASE}/search?q=${encodeURIComponent(query)}&limit=${limit}`
   );
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  return data.tracks || data;
 }
 
 export async function resolveStream(videoId) {
@@ -35,3 +36,11 @@ export async function fetchLyrics(title, artist, duration = 0) {
   if (!res.ok) throw new Error(`Lyrics fetch failed: ${res.status}`);
   return res.json();
 }
+
+export async function fetchSuggestions(videoId, limit = 20) {
+  const res = await fetch(`${BASE}/suggestions?videoId=${encodeURIComponent(videoId)}&limit=${limit}`);
+  if (!res.ok) throw new Error(`Suggestions fetch failed: ${res.status}`);
+  const data = await res.json();
+  return data.tracks || [];
+}
+

@@ -46,7 +46,7 @@ export default function LyricsView() {
       {/* Panel */}
       <div
         className={`
-          fixed top-0 right-0 bottom-[80px] z-40 w-80
+          fixed top-0 right-0 bottom-[100px] z-40 w-full sm:w-80
           glass-strong border-l border-white/[0.06]
           flex flex-col
           transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]

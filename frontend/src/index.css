@@ -103,3 +103,114 @@ input[type="range"]::-webkit-slider-runnable-track {
 .transition-hero {
   transition: background-image 1s ease, opacity 0.8s ease;
 }
+
+/* ─── Scene: Night Drive — road lane markings ────────────────── */
+.scene-road-dash {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 12%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 210, 60, 0.85) 20%,
+    rgba(255, 210, 60, 0.85) 80%,
+    transparent 100%
+  );
+  border-radius: 2px;
+  animation: road-dash 1.8s linear infinite;
+}
+
+@keyframes road-dash {
+  from { top: -15%; }
+  to   { top: 115%; }
+}
+
+/* Night Drive: side edge glow streaks */
+.scene-road-edge-l {
+  position: absolute;
+  left: calc(50% - 280px);
+  top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255, 120, 30, 0.35) 40%,
+    rgba(255, 80, 10, 0.2) 100%
+  );
+  filter: blur(1px);
+}
+.scene-road-edge-r {
+  position: absolute;
+  right: calc(50% - 280px);
+  top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255, 120, 30, 0.35) 40%,
+    rgba(255, 80, 10, 0.2) 100%
+  );
+  filter: blur(1px);
+}
+
+/* ─── Scene: Cyber Dawn — aurora blobs ───────────────────────── */
+.scene-aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  will-change: transform;
+}
+
+.scene-aurora-1 {
+  top: -10%; left: 5%;
+  width: 75%; height: 70%;
+  background: radial-gradient(ellipse, rgba(130, 50, 255, 0.38) 0%, transparent 70%);
+  animation-name: aurora-1;
+  animation-duration: 10s;
+}
+
+.scene-aurora-2 {
+  top: 5%; right: -5%;
+  width: 65%; height: 60%;
+  background: radial-gradient(ellipse, rgba(20, 200, 210, 0.28) 0%, transparent 70%);
+  animation-name: aurora-2;
+  animation-duration: 14s;
+}
+
+.scene-aurora-3 {
+  bottom: 8%; left: 20%;
+  width: 60%; height: 55%;
+  background: radial-gradient(ellipse, rgba(200, 40, 160, 0.22) 0%, transparent 70%);
+  animation-name: aurora-3;
+  animation-duration: 8s;
+}
+
+/* ─── Seekbar tooltip ─────────────────────────────────────────── */
+.seekbar-tooltip {
+  position: absolute;
+  top: -26px;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 15, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 5px;
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: 'Inter', monospace;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* ─── Ambient sliders — coloured accent tracks ────────────────── */
+.ambient-range-rain::-webkit-slider-thumb  { background: #38bdf8; }
+.ambient-range-vinyl::-webkit-slider-thumb { background: #a3e635; }
+.ambient-range-engine::-webkit-slider-thumb { background: #fb923c; }
+
