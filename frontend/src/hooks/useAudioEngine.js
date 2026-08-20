@@ -120,13 +120,22 @@ function useYouTubeEngine(analyserRef) {
             }
           },
           onStateChange: (e) => {
-            // Numeric states: 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 0 = ENDED
+            // Numeric states: 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 0 = ENDED, 5 = CUED, -1 = UNSTARTED
             if (e.data === 1) {
               usePlayerStore.getState().setIsPlaying(true);
               const dur = player.getDuration?.() || 0;
               if (dur > 0) usePlayerStore.getState().setDuration(dur);
             } else if (e.data === 2) {
               usePlayerStore.getState().setIsPlaying(false);
+            } else if (e.data === 3) {
+              if (usePlayerStore.getState().isPlaying) {
+                try { player.playVideo(); } catch (_) {}
+              }
+            } else if (e.data === 5 || e.data === -1) {
+              // Video was cued/unstarted — automatically force playback immediately!
+              if (usePlayerStore.getState().isPlaying) {
+                try { player.playVideo(); } catch (_) {}
+              }
             } else if (e.data === 0) {
               const rm = usePlayerStore.getState().repeatMode;
               if (rm === "one") {
@@ -162,7 +171,9 @@ function useYouTubeEngine(analyserRef) {
     }
   }, []);
 
-  // ── Instant Song Startup on streamUrl change ───────────────────────────────
+  // ── Instant Song Startup on streamUrl / playTimestamp change ───────────────
+  const playTimestamp = usePlayerStore((s) => s.playTimestamp);
+
   useEffect(() => {
     if (!streamUrl) return;
     const videoId = streamUrl;
@@ -179,7 +190,7 @@ function useYouTubeEngine(analyserRef) {
     } catch (e) {
       console.warn("loadVideoById error:", e);
     }
-  }, [streamUrl]);
+  }, [streamUrl, playTimestamp]);
 
   // ── Play / Pause Sync ──────────────────────────────────────────────────────
   useEffect(() => {

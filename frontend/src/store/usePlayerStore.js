@@ -137,6 +137,7 @@ const usePlayerStore = create(
         set({
           currentTrack: track,
           streamUrl: track.id,
+          playTimestamp: Date.now(),
           isPlaying: true,
           isLoading: false,
           progress: 0,
