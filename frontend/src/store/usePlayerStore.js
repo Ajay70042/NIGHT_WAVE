@@ -43,6 +43,7 @@ const usePlayerStore = create(
 
       // ── View mode ────────────────────────────────────────────────
       isCinematic: false,
+      isPocketMode: false,
 
       // ── Ambient audio ─────────────────────────────────────────────
       ambientLevels: { rain: 0, vinyl: 0, engine: 0 },
@@ -60,6 +61,7 @@ const usePlayerStore = create(
         set((s) => ({ ambientLevels: { ...s.ambientLevels, [key]: val } })),
       toggleLyrics: () => set((s) => ({ isLyricsOpen: !s.isLyricsOpen, isQueueOpen: false })),
       toggleCinematic: () => set((s) => ({ isCinematic: !s.isCinematic })),
+      togglePocketMode: () => set((s) => ({ isPocketMode: !s.isPocketMode })),
 
       // Search history actions
       addSearchHistory: (query) => {

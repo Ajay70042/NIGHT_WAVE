@@ -1,15 +1,13 @@
 """
-GET /api/stream?id={videoId}   → returns stream metadata + direct URL
-GET /api/proxy?id={videoId}    → redirects browser to direct YouTube URL
-
-YouTube blocks server-side fetches (403) due to IP-level restrictions.
-The browser can play the URL directly — we just need to redirect it there.
-The URL is same-domain (googlevideo.com) which browsers can play via <audio>.
+GET /api/stream?id={videoId}         → returns stream metadata + direct URL
+GET /api/stream/audio?id={videoId}   → streams audio bytes with HTTP 206 Range support for native HTML5 <audio>
+GET /api/proxy?id={videoId}          → redirects browser to direct YouTube URL
 """
 import asyncio
 import sys
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import RedirectResponse
+import httpx
+from fastapi import APIRouter, Query, Request, HTTPException
+from fastapi.responses import RedirectResponse, StreamingResponse
 try:
     from backend.cache import get_stream, set_stream
 except ImportError:
@@ -20,56 +18,39 @@ router = APIRouter()
 
 async def _resolve(video_id: str) -> dict:
     """Run yt-dlp to get the best audio stream URL + metadata."""
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    cmd = [
-        sys.executable, "-m", "yt_dlp",
-        "--no-playlist",
-        "--format", "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
-        "--print", "%(url)s\n%(duration)s\n%(ext)s\n%(title)s\n%(uploader)s",
-        "--quiet",
-        "--no-warnings",
-        url,
-    ]
+    def _extract_sync():
+        import yt_dlp
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        ydl_opts = {
+            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "quiet": True,
+            "no_warnings": True,
+            "remote_components": ["ejs:github"],
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            ext = info.get("ext", "m4a")
+            mime_map = {"m4a": "audio/mp4", "webm": "audio/webm", "mp4": "audio/mp4", "opus": "audio/ogg"}
+            return {
+                "url": info.get("url"),
+                "headers": info.get("http_headers", {}),
+                "mimeType": mime_map.get(ext, "audio/mp4"),
+                "duration": float(info.get("duration") or 0.0),
+                "ext": ext,
+                "title": info.get("title", ""),
+                "uploader": info.get("uploader", ""),
+            }
+
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="yt-dlp timed out")
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, _extract_sync)
+        if not data or not data.get("url"):
+            raise HTTPException(status_code=502, detail="yt-dlp returned no stream URL")
+        return data
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"yt-dlp error: {exc}")
-
-    if proc.returncode != 0:
-        err = stderr.decode(errors="replace").strip()
-        raise HTTPException(status_code=502, detail=f"yt-dlp failed: {err[:300]}")
-
-    lines = stdout.decode(errors="replace").strip().splitlines()
-    if not lines or not lines[0].startswith("http"):
-        raise HTTPException(status_code=502, detail="yt-dlp returned no URL")
-
-    stream_url = lines[0].strip()
-    try:
-        duration = float(lines[1].strip())
-    except (IndexError, ValueError):
-        duration = 0.0
-    ext      = lines[2].strip() if len(lines) > 2 else "m4a"
-    title    = lines[3].strip() if len(lines) > 3 else ""
-    uploader = lines[4].strip() if len(lines) > 4 else ""
-
-    mime_map  = {"m4a": "audio/mp4", "webm": "audio/webm", "mp4": "audio/mp4", "opus": "audio/ogg"}
-    mime_type = mime_map.get(ext, "audio/mp4")
-
-    return {
-        "url": stream_url,
-        "mimeType": mime_type,
-        "duration": duration,
-        "ext": ext,
-        "title": title,
-        "uploader": uploader,
-    }
 
 
 @router.get("/stream")
@@ -83,12 +64,12 @@ async def stream_info(id: str = Query(..., min_length=5)):
     return {**data, "cached": False}
 
 
-@router.get("/proxy")
-async def proxy_audio(id: str = Query(..., min_length=5)):
+@router.get("/stream/audio")
+async def stream_audio_bytes(request: Request, id: str = Query(..., min_length=5)):
     """
-    Redirects browser to the direct YouTube audio URL.
-    Server-side fetch is blocked (403) by YouTube's IP restrictions,
-    but browsers can play the URL directly since they have real TLS fingerprints.
+    Streams audio bytes directly to the browser with HTTP 206 Partial Content support.
+    Enables native HTML5 <audio> playback on mobile (iOS/Android) with uninterrupted
+    background playback when the screen is locked or app is minimized.
     """
     cached = get_stream(id)
     if cached:
@@ -96,5 +77,63 @@ async def proxy_audio(id: str = Query(..., min_length=5)):
     else:
         data = await _resolve(id)
         set_stream(id, data)
-    # 302 redirect — browser follows it and plays audio directly
+
+    stream_url = data.get("url")
+    if not stream_url:
+        raise HTTPException(status_code=404, detail="Audio stream not found")
+
+    upstream_headers = dict(data.get("headers") or {})
+    range_header = request.headers.get("range")
+    if range_header:
+        upstream_headers["Range"] = range_header
+
+    client = httpx.AsyncClient(timeout=30)
+    try:
+        req = client.build_request("GET", stream_url, headers=upstream_headers)
+        res = await client.send(req, stream=True)
+    except Exception as e:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"Upstream stream error: {e}")
+
+    async def stream_generator():
+        try:
+            async for chunk in res.aiter_bytes(chunk_size=65536):
+                yield chunk
+        finally:
+            await res.aclose()
+            await client.aclose()
+
+    resp_headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+    }
+    if "content-range" in res.headers:
+        resp_headers["Content-Range"] = res.headers["content-range"]
+    if "content-length" in res.headers:
+        resp_headers["Content-Length"] = res.headers["content-length"]
+    if "content-type" in res.headers:
+        resp_headers["Content-Type"] = res.headers["content-type"]
+    else:
+        resp_headers["Content-Type"] = data.get("mimeType", "audio/mp4")
+
+    return StreamingResponse(
+        stream_generator(),
+        status_code=res.status_code,
+        headers=resp_headers,
+        media_type=resp_headers.get("Content-Type", "audio/mp4"),
+    )
+
+
+@router.get("/proxy")
+async def proxy_audio(id: str = Query(..., min_length=5)):
+    """
+    Redirects browser to direct YouTube audio URL.
+    """
+    cached = get_stream(id)
+    if cached:
+        data = cached
+    else:
+        data = await _resolve(id)
+        set_stream(id, data)
     return RedirectResponse(url=data["url"], status_code=302)
+

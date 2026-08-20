@@ -1,19 +1,14 @@
 /**
- * useAudioEngine — YouTube IFrame Player API
+ * useAudioEngine — YouTube IFrame Player API with Robust Mobile Background Audio Anchor
  *
- * Why IFrame API?
- * - Direct googlevideo.com URLs fail (MEDIA_ERR_SRC_NOT_SUPPORTED) because
- *   the ANDROID_VR client token in the URL is rejected by browsers.
- * - Server-side proxy gets 403 (YouTube blocks non-browser TLS fingerprints).
- * - YouTube IFrame API is the ONLY officially supported way to play YouTube
- *   audio/video in a web app without API keys.
- *
- * The IFrame is hidden (0×0, muted visually) — we use the IFrame API's
- * internal audio engine while keeping our own UI controls synced via polling.
- *
- * Visualizer: The IFrame audio isn't accessible via Web Audio API due to
- * cross-origin restrictions, so we simulate the visualizer with a
- * CSS-driven animation tied to the playing state.
+ * Background Playback on Mobile (iOS & Android):
+ * - Mobile OSes pause video elements/iframes when off-screen or in the background
+ *   unless an active HTML5 audio session is running.
+ * - We generate a valid 2-second PCM WAV silent audio Blob in-memory and keep it
+ *   looping on an HTMLAudioElement whenever music is playing.
+ * - This anchors the OS-level Audio Session (iOS AVAudioSession / Android AudioFocus),
+ *   allowing YouTube audio to continue playing uninterrupted in the background & lock screen.
+ * - Includes Screen Wake Lock API management for foreground lyrics/visualizer enjoyment.
  */
 import { useEffect, useRef, useCallback } from "react";
 import usePlayerStore from "../store/usePlayerStore";
@@ -27,14 +22,56 @@ function loadYTScript() {
   document.head.appendChild(tag);
 }
 
-// Silent audio buffer to anchor background audio session in iOS / Android mobile browsers
-const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+/**
+ * Generates a valid 2-second 8000Hz 16-bit Mono PCM Silent WAV Blob URL.
+ * Produces real WAV headers + zeroed PCM sample frames so mobile hardware
+ * audio engines register an active, non-empty audio session.
+ */
+let cachedSilentBlobUrl = null;
+function getSilentAudioBlobUrl() {
+  if (cachedSilentBlobUrl) return cachedSilentBlobUrl;
+  try {
+    const sampleRate = 8000;
+    const numSamples = sampleRate * 2; // 2 seconds
+    const dataSize = numSamples * 2;   // 16-bit = 2 bytes/sample
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    // RIFF chunk descriptor
+    view.setUint32(0, 0x52494646, false); // "RIFF"
+    view.setUint32(4, 36 + dataSize, true);
+    view.setUint32(8, 0x57415645, false); // "WAVE"
+
+    // fmt sub-chunk
+    view.setUint32(12, 0x666d7420, false); // "fmt "
+    view.setUint32(16, 16, true);          // Subchunk1Size (16 for PCM)
+    view.setUint16(20, 1, true);           // AudioFormat (1 = PCM)
+    view.setUint16(22, 1, true);           // NumChannels (1 = Mono)
+    view.setUint32(24, sampleRate, true);  // SampleRate
+    view.setUint32(28, sampleRate * 2, true); // ByteRate
+    view.setUint16(32, 2, true);           // BlockAlign
+    view.setUint16(34, 16, true);          // BitsPerSample
+
+    // data sub-chunk
+    view.setUint32(36, 0x64617461, false); // "data"
+    view.setUint32(40, dataSize, true);
+
+    // Remaining bytes are initialized to 0 (pure silence)
+    const blob = new Blob([buffer], { type: "audio/wav" });
+    cachedSilentBlobUrl = URL.createObjectURL(blob);
+    return cachedSilentBlobUrl;
+  } catch (e) {
+    console.warn("Failed to generate silent WAV blob, falling back to minimal URI", e);
+    return "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+  }
+}
 
 export function useAudioEngine() {
   const playerRef          = useRef(null);   // YT.Player instance
-  const containerRef       = useRef(null);   // hidden div for iframe
+  const containerRef       = useRef(null);   // in-viewport container for iframe
   const silentAudioRef     = useRef(null);   // silent audio element to anchor OS background audio session
-  const analyserRef        = useRef(null);   // dummy — keeps Visualizer happy
+  const wakeLockRef        = useRef(null);   // Screen Wake Lock handle
+  const analyserRef        = useRef(null);   // Visualizer simulated ref
   const readyRef           = useRef(false);
   const pendingIdRef       = useRef(null);   // videoId to load when player is ready
   const switchingTrackRef  = useRef(false);  // prevents transient unload PAUSE from stopping playback
@@ -42,7 +79,7 @@ export function useAudioEngine() {
   const switchTimeoutRef   = useRef(null);
 
   const {
-    streamUrl,          // we repurpose this as videoId
+    streamUrl,
     isPlaying,
     volume,
     isMuted,
@@ -53,38 +90,84 @@ export function useAudioEngine() {
     repeatMode,
   } = usePlayerStore();
 
-  // ── Create hidden iframe container + silent audio in DOM ───────────────────
+  // ── Screen Wake Lock Manager ───────────────────────────────────────────────
+  const requestWakeLock = useCallback(async () => {
+    if ("wakeLock" in navigator && !wakeLockRef.current && document.visibilityState === "visible") {
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener("release", () => {
+          wakeLockRef.current = null;
+        });
+      } catch (_) {
+        // WakeLock may be rejected due to battery saver or background state
+      }
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+      } catch (_) {}
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  // ── Create in-viewport iframe container + silent audio in DOM ──────────────
   useEffect(() => {
+    // 1. YouTube Iframe container:
+    // Must be in active viewport with tiny opacity (0.001) instead of off-screen (-9999px)
+    // so mobile browsers do not freeze the media renderer when backgrounded.
     let div = document.getElementById("yt-player-container");
     if (!div) {
       div = document.createElement("div");
       div.id = "yt-player-container";
-      div.style.cssText = "position:fixed;bottom:-9999px;left:-9999px;width:1px;height:1px;visibility:hidden;pointer-events:none;";
+      div.style.cssText =
+        "position:fixed;top:0;left:0;width:200px;height:200px;opacity:0.001;pointer-events:none;z-index:-9999;overflow:hidden;";
       document.body.appendChild(div);
     }
     containerRef.current = div;
 
-    // Create silent audio anchor for mobile background playback
+    // 2. Silent audio anchor for mobile background playback session
     let audio = document.getElementById("nightwave-bg-audio");
     if (!audio) {
       audio = document.createElement("audio");
       audio.id = "nightwave-bg-audio";
-      audio.src = SILENT_AUDIO_URI;
+      audio.src = getSilentAudioBlobUrl();
       audio.loop = true;
       audio.preload = "auto";
-      audio.style.display = "none";
+      audio.setAttribute("playsinline", "true");
+      audio.setAttribute("webkit-playsinline", "true");
+      audio.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0.001;pointer-events:none;";
       document.body.appendChild(audio);
     }
     silentAudioRef.current = audio;
 
+    // 3. One-time gesture listener to unlock audio permissions on first mobile touch
+    const primeAudioGesture = () => {
+      if (audio) {
+        audio.play().then(() => {
+          if (!usePlayerStore.getState().isPlaying) {
+            audio.pause();
+          }
+        }).catch(() => {});
+      }
+      window.removeEventListener("touchstart", primeAudioGesture);
+      window.removeEventListener("pointerdown", primeAudioGesture);
+      window.removeEventListener("click", primeAudioGesture);
+    };
+    window.addEventListener("touchstart", primeAudioGesture, { passive: true });
+    window.addEventListener("pointerdown", primeAudioGesture, { passive: true });
+    window.addEventListener("click", primeAudioGesture, { passive: true });
+
     loadYTScript();
 
-    // Initialize player when API is ready
+    // 4. Initialize player when API is ready
     const initPlayer = () => {
       if (playerRef.current) return;
       const player = new window.YT.Player(div, {
-        width:  "1",
-        height: "1",
+        width:  "200",
+        height: "200",
         videoId: "",
         playerVars: {
           autoplay:       1,
@@ -94,6 +177,7 @@ export function useAudioEngine() {
           iv_load_policy: 3,
           modestbranding: 1,
           rel:            0,
+          playsinline:    1, // CRITICAL FOR MOBILE IOS & ANDROID INLINE PLAYBACK
           origin:         window.location.origin,
         },
         events: {
@@ -102,7 +186,7 @@ export function useAudioEngine() {
             player.setVolume(Math.round(
               (usePlayerStore.getState().isMuted ? 0 : usePlayerStore.getState().volume) * 100
             ));
-            // Load any track that was queued before player was ready
+            // Load any track queued before player was ready
             if (pendingIdRef.current) {
               const vid = pendingIdRef.current;
               pendingIdRef.current = null;
@@ -121,7 +205,6 @@ export function useAudioEngine() {
               const dur = player.getDuration?.() || 0;
               if (dur > 0) usePlayerStore.getState().setDuration(dur);
             } else if (e.data === YT.BUFFERING) {
-              // Buffering is normal loading state — keep playing intent active
               if (intendedPlayingRef.current) {
                 usePlayerStore.getState().setIsPlaying(true);
               }
@@ -173,7 +256,9 @@ export function useAudioEngine() {
     }
 
     return () => {
-      // Keep singleton in memory
+      window.removeEventListener("touchstart", primeAudioGesture);
+      window.removeEventListener("pointerdown", primeAudioGesture);
+      window.removeEventListener("click", primeAudioGesture);
     };
   }, []);
 
@@ -184,6 +269,12 @@ export function useAudioEngine() {
 
     intendedPlayingRef.current = true;
     switchingTrackRef.current = true;
+
+    // Anchor background audio session immediately
+    const audio = silentAudioRef.current;
+    if (audio) {
+      audio.play().catch(() => {});
+    }
 
     if (switchTimeoutRef.current) clearTimeout(switchTimeoutRef.current);
     switchTimeoutRef.current = setTimeout(() => {
@@ -217,6 +308,7 @@ export function useAudioEngine() {
       if (p && readyRef.current && !switchingTrackRef.current) {
         try { p.playVideo(); } catch (e) { /* ignore */ }
       }
+      requestWakeLock();
     } else {
       if (audio) {
         audio.pause();
@@ -224,8 +316,9 @@ export function useAudioEngine() {
       if (p && readyRef.current && !switchingTrackRef.current) {
         try { p.pauseVideo(); } catch (e) { /* ignore */ }
       }
+      releaseWakeLock();
     }
-  }, [isPlaying]);
+  }, [isPlaying, requestWakeLock, releaseWakeLock]);
 
   // ── Maintain background playback on app minimize / screen lock ───────────
   useEffect(() => {
@@ -236,6 +329,9 @@ export function useAudioEngine() {
         if (audio) audio.play().catch(() => {});
         if (p && readyRef.current) {
           try { p.playVideo(); } catch (_) {}
+        }
+        if (document.visibilityState === "visible") {
+          requestWakeLock();
         }
       }
     };
@@ -249,7 +345,7 @@ export function useAudioEngine() {
       window.removeEventListener("pagehide", handleVisibilityChange);
       window.removeEventListener("blur", handleVisibilityChange);
     };
-  }, []);
+  }, [requestWakeLock]);
 
   // ── Volume ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -293,6 +389,6 @@ export function useAudioEngine() {
     }
   }, [setProgress]);
 
-  // analyserRef is null — Visualizer should show simulated animation
   return { analyser: analyserRef, seek };
 }
+

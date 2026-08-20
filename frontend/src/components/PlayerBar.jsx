@@ -22,6 +22,7 @@ import {
   Maximize2,
   Heart,
   Radio,
+  Moon,
 } from "lucide-react";
 import usePlayerStore from "../store/usePlayerStore";
 import MarqueeText from "./MarqueeText";
@@ -82,6 +83,7 @@ export default function PlayerBar({ seek }) {
     toggleQueue,
     toggleLyrics,
     toggleCinematic,
+    togglePocketMode,
     toggleFavorite,
     next,
     previous,
@@ -329,6 +331,11 @@ export default function PlayerBar({ seek }) {
             <Maximize2 className="w-3.5 h-3.5" />
           </IconButton>
 
+          {/* Pocket Mode / Screen Shield */}
+          <IconButton onClick={togglePocketMode} title="Pocket Shield / AMOLED Saver">
+            <Moon className="w-3.5 h-3.5" />
+          </IconButton>
+
           {/* Mute Button */}
           <IconButton onClick={toggleMute} title="Mute (M)">
             {isMuted || volume === 0 ? (
@@ -369,6 +376,9 @@ export default function PlayerBar({ seek }) {
           </IconButton>
           <IconButton onClick={toggleQueue} active={isQueueOpen} title="Queue">
             <ListMusic className="w-3.5 h-3.5" />
+          </IconButton>
+          <IconButton onClick={togglePocketMode} title="Pocket Shield">
+            <Moon className="w-3.5 h-3.5" />
           </IconButton>
           <IconButton onClick={toggleCinematic} title="Cinema">
             <Maximize2 className="w-3.5 h-3.5" />
