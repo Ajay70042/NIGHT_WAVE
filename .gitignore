@@ -30,6 +30,8 @@ frontend/dist-ssr/
 *.local
 .npm
 .eslintcache
+package-lock.json
+frontend/package-lock.json
 
 # Logs
 logs
