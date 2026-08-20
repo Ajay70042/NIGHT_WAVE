@@ -48,30 +48,51 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isCinematic, toggleCinematic]);
 
-  // Media Session API integration
+  // Media Session API integration for Lock Screen / Background Controls
   useEffect(() => {
-    if ("mediaSession" in navigator) {
-      if (currentTrack) {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: currentTrack.title,
-          artist: currentTrack.artist || "Unknown Artist",
-          album: "NightWave",
-          artwork: currentTrack.thumbnail
-            ? [{ src: currentTrack.thumbnail, sizes: "512x512", type: "image/jpeg" }]
-            : [],
-        });
-      }
+    if (!("mediaSession" in navigator)) return;
 
-      navigator.mediaSession.setActionHandler("play", () => setIsPlaying(true));
-      navigator.mediaSession.setActionHandler("pause", () => setIsPlaying(false));
-      navigator.mediaSession.setActionHandler("previoustrack", () => previous());
-      navigator.mediaSession.setActionHandler("nexttrack", () => next());
-      navigator.mediaSession.setActionHandler("seekto", (details) => {
-        if (details.fastSeek && "fastSeek" in HTMLMediaElement.prototype) return;
-        seek(details.seekTime);
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+
+    if (currentTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist || "Unknown Artist",
+        album: "NightWave",
+        artwork: currentTrack.thumbnail
+          ? [
+              { src: currentTrack.thumbnail, sizes: "96x96", type: "image/jpeg" },
+              { src: currentTrack.thumbnail, sizes: "128x128", type: "image/jpeg" },
+              { src: currentTrack.thumbnail, sizes: "256x256", type: "image/jpeg" },
+              { src: currentTrack.thumbnail, sizes: "512x512", type: "image/jpeg" },
+            ]
+          : [],
       });
     }
-  }, [currentTrack, setIsPlaying, previous, next, seek]);
+
+    navigator.mediaSession.setActionHandler("play", () => setIsPlaying(true));
+    navigator.mediaSession.setActionHandler("pause", () => setIsPlaying(false));
+    navigator.mediaSession.setActionHandler("previoustrack", () => previous());
+    navigator.mediaSession.setActionHandler("nexttrack", () => next());
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (details.fastSeek && "fastSeek" in HTMLMediaElement.prototype) return;
+      seek(details.seekTime);
+    });
+  }, [currentTrack, isPlaying, setIsPlaying, previous, next, seek]);
+
+  // Sync position state with lock screen seekbar
+  const { duration } = usePlayerStore();
+  useEffect(() => {
+    if ("mediaSession" in navigator && "setPositionState" in navigator.mediaSession && duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(0, duration),
+          playbackRate: 1.0,
+          position: Math.min(Math.max(0, progress), duration),
+        });
+      } catch (_) {}
+    }
+  }, [progress, duration]);
 
   return (
     <>

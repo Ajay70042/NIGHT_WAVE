@@ -27,9 +27,13 @@ function loadYTScript() {
   document.head.appendChild(tag);
 }
 
+// Silent audio buffer to anchor background audio session in iOS / Android mobile browsers
+const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
 export function useAudioEngine() {
   const playerRef          = useRef(null);   // YT.Player instance
   const containerRef       = useRef(null);   // hidden div for iframe
+  const silentAudioRef     = useRef(null);   // silent audio element to anchor OS background audio session
   const analyserRef        = useRef(null);   // dummy — keeps Visualizer happy
   const readyRef           = useRef(false);
   const pendingIdRef       = useRef(null);   // videoId to load when player is ready
@@ -49,7 +53,7 @@ export function useAudioEngine() {
     repeatMode,
   } = usePlayerStore();
 
-  // ── Create hidden iframe container in DOM ─────────────────────────────────
+  // ── Create hidden iframe container + silent audio in DOM ───────────────────
   useEffect(() => {
     let div = document.getElementById("yt-player-container");
     if (!div) {
@@ -59,6 +63,19 @@ export function useAudioEngine() {
       document.body.appendChild(div);
     }
     containerRef.current = div;
+
+    // Create silent audio anchor for mobile background playback
+    let audio = document.getElementById("nightwave-bg-audio");
+    if (!audio) {
+      audio = document.createElement("audio");
+      audio.id = "nightwave-bg-audio";
+      audio.src = SILENT_AUDIO_URI;
+      audio.loop = true;
+      audio.preload = "auto";
+      audio.style.display = "none";
+      document.body.appendChild(audio);
+    }
+    silentAudioRef.current = audio;
 
     loadYTScript();
 
@@ -111,6 +128,11 @@ export function useAudioEngine() {
             } else if (e.data === YT.PAUSED) {
               // If we are currently transitioning to a new track, ignore transient unload PAUSE
               if (switchingTrackRef.current) {
+                try { player.playVideo(); } catch (_) {}
+                return;
+              }
+              // If paused automatically due to app backgrounding / locking screen, keep playing!
+              if (intendedPlayingRef.current && (document.visibilityState === "hidden" || !document.hasFocus())) {
                 try { player.playVideo(); } catch (_) {}
                 return;
               }
@@ -181,20 +203,53 @@ export function useAudioEngine() {
     }
   }, [streamUrl]);
 
-  // ── Sync play/pause from Zustand ──────────────────────────────────────────
+  // ── Sync play/pause from Zustand + trigger mobile background audio session ─
   useEffect(() => {
     intendedPlayingRef.current = isPlaying;
     const p = playerRef.current;
-    if (!p || !readyRef.current) return;
+    const audio = silentAudioRef.current;
 
-    // If switching tracks, do not prematurely pause
-    if (switchingTrackRef.current && !isPlaying) return;
-
-    try {
-      if (isPlaying) p.playVideo();
-      else p.pauseVideo();
-    } catch (e) { /* ignore if not ready */ }
+    if (isPlaying) {
+      // Start silent audio anchor to keep OS background audio session active
+      if (audio) {
+        audio.play().catch(() => {});
+      }
+      if (p && readyRef.current && !switchingTrackRef.current) {
+        try { p.playVideo(); } catch (e) { /* ignore */ }
+      }
+    } else {
+      if (audio) {
+        audio.pause();
+      }
+      if (p && readyRef.current && !switchingTrackRef.current) {
+        try { p.pauseVideo(); } catch (e) { /* ignore */ }
+      }
+    }
   }, [isPlaying]);
+
+  // ── Maintain background playback on app minimize / screen lock ───────────
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const p = playerRef.current;
+      const audio = silentAudioRef.current;
+      if (intendedPlayingRef.current) {
+        if (audio) audio.play().catch(() => {});
+        if (p && readyRef.current) {
+          try { p.playVideo(); } catch (_) {}
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handleVisibilityChange);
+    window.addEventListener("blur", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handleVisibilityChange);
+      window.removeEventListener("blur", handleVisibilityChange);
+    };
+  }, []);
 
   // ── Volume ────────────────────────────────────────────────────────────────
   useEffect(() => {
