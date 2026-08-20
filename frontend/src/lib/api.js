@@ -47,3 +47,8 @@ export async function fetchSuggestions(videoId, limit = 20) {
   return data.tracks || [];
 }
 
+export function pingHealth() {
+  fetch(`${BASE}/health`).catch(() => {});
+}
+
+

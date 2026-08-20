@@ -19,8 +19,12 @@ import AmbientLayer from "./components/AmbientLayer";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import usePlayerStore from "./store/usePlayerStore";
+import { pingHealth } from "./lib/api";
 
 export default function App() {
+  useEffect(() => {
+    pingHealth();
+  }, []);
   const { seek: engineSeek } = useAudioEngine();
   const { progress, isCinematic, toggleCinematic, currentTrack, isPlaying, setIsPlaying, next, previous } = usePlayerStore();
 
