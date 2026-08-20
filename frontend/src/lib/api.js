@@ -1,6 +1,9 @@
-/** API helpers — all routes proxy through Vite to :8000 */
-
-const BASE = "/api";
+const rawBase = import.meta.env.VITE_API_URL?.trim();
+const BASE = rawBase
+  ? rawBase.replace(/\/+$/, "").endsWith("/api")
+    ? rawBase.replace(/\/+$/, "")
+    : `${rawBase.replace(/\/+$/, "")}/api`
+  : "/api";
 
 export async function searchTracks(query, limit = 20) {
   const res = await fetch(
