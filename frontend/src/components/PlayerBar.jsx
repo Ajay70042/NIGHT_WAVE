@@ -118,6 +118,13 @@ export default function PlayerBar({ seek }) {
     setTooltip((p) => ({ ...p, visible: false }));
   }, []);
 
+  const handlePrevious = useCallback(() => {
+    const res = previous();
+    if (res === "restart" && seek) {
+      seek(0);
+    }
+  }, [previous, seek]);
+
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
   const RepeatIcon = repeatMode === "one" ? Repeat1 : Repeat;
 
@@ -210,7 +217,7 @@ export default function PlayerBar({ seek }) {
               <Shuffle className="w-3.5 h-3.5" />
             </IconButton>
 
-            <IconButton onClick={previous} title="Previous (P)" disabled={!currentTrack}>
+            <IconButton onClick={handlePrevious} title="Previous (P)" disabled={!currentTrack}>
               <SkipBack className="w-4 h-4 fill-current" />
             </IconButton>
 

@@ -25,6 +25,10 @@ import {
 import HeroBackground from "./HeroBackground";
 import usePlayerStore from "../store/usePlayerStore";
 import { formatTime } from "../lib/formatTime";
+import { getActiveLineIdx, getWordActivations, computeWordTimings } from "../lib/wordSync";
+
+// Shared transition — 220ms ease bridges the 200ms render gap from the audio engine
+const WORD_TRANSITION = "opacity 220ms ease, transform 220ms ease, filter 220ms ease, text-shadow 220ms ease";
 
 const SCENES = [
   { id: "song-aurora",    label: "Song Reactive 🌈", Icon: Sparkles   },
@@ -52,34 +56,21 @@ const CinemaLyricsList = memo(function CinemaLyricsList({ lines, progress, onSee
   const activeLineRef = useRef(null);
   const prevIdxRef = useRef(-1);
 
-  // Compute active index
-  let activeIdx = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].time <= progress) {
-      activeIdx = i;
-    } else {
-      break;
-    }
-  }
+  const activeIdx = getActiveLineIdx(lines, progress);
+  const wordActivations =
+    activeIdx >= 0 ? getWordActivations(lines, activeIdx, progress) : [];
 
-  // Smooth scroll only when active index changes
   useEffect(() => {
     if (activeIdx !== prevIdxRef.current) {
       prevIdxRef.current = activeIdx;
-      if (activeLineRef.current) {
-        activeLineRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
+      activeLineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [activeIdx]);
 
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
-      {/* Scroll container */}
       <div
-        className="flex-1 overflow-y-auto px-4 sm:px-8 py-8 space-y-6"
+        className="flex-1 overflow-y-auto px-4 sm:px-8 py-8"
         style={{ scrollbarWidth: "none" }}
       >
         <div className="h-[35vh]" />
@@ -87,28 +78,55 @@ const CinemaLyricsList = memo(function CinemaLyricsList({ lines, progress, onSee
         {lines.map((line, i) => {
           const isActive = i === activeIdx;
           const isPast = i < activeIdx;
-          const words = line.text.split(" ");
+          const words = line.words && line.words.length > 0
+            ? line.words.map((w) => w.text)
+            : line.text.split(/\s+/).filter(Boolean);
 
           return (
             <div
               key={i}
               ref={isActive ? activeLineRef : null}
               onClick={() => onSeek(line.time)}
-              className="cursor-pointer text-left py-2 px-1 select-none transition-all duration-300 ease-out group"
+              className="cursor-pointer text-left select-none"
+              style={{ padding: isActive ? "12px 4px 18px" : "6px 4px" }}
             >
               {isActive ? (
-                /* Active: Pure floating colorful words */
-                <div className="flex flex-wrap gap-x-3.5 gap-y-2 items-center text-3xl sm:text-4xl lg:text-5xl font-black font-display leading-tight tracking-tight">
+                <div
+                  className="flex flex-wrap items-baseline font-black font-display leading-tight tracking-tight"
+                  style={{ gap: "0 0.45em", fontSize: "clamp(26px, 5vw, 52px)" }}
+                >
                   {words.map((w, wIdx) => {
                     const color = WORD_COLORS[wIdx % WORD_COLORS.length];
+                    const act = wordActivations[wIdx] ?? 0;
+
+                    // Apple Music & NightWave opacity curve: upcoming→sung→active
+                    const opacity = act > 0.55
+                      ? 0.38 + (act - 0.55) * 1.38  // 0.38 → 1.0
+                      : act > 0.1
+                      ? 0.38                        // sung
+                      : 0.20 + act * 1.6;           // upcoming
+
+                    const scale = act > 0.65 ? 1 + (act - 0.65) * 0.18 : 1.0;
+                    const glowAmt = Math.max(0, (act - 0.65) / 0.35);
+
                     return (
                       <span
                         key={wIdx}
-                        className="animate-word-float inline-block transition-transform duration-200 hover:scale-105"
                         style={{
-                          color: color,
-                          animationDelay: `${wIdx * 100}ms`,
-                          textShadow: `0 0 28px ${color}99, 0 2px 10px rgba(0,0,0,0.8)`,
+                          display: "inline-block",
+                          color,
+                          opacity: Math.min(1, Math.max(0.18, opacity)),
+                          transform: `scale(${scale})`,
+                          transformOrigin: "center bottom",
+                          textShadow: glowAmt > 0
+                            ? `0 0 ${glowAmt * 36}px ${color}${toHex(glowAmt * 0.95)}, 0 0 ${glowAmt * 14}px ${color}${toHex(glowAmt * 0.6)}`
+                            : "none",
+                          filter: glowAmt > 0.25
+                            ? `drop-shadow(0 0 ${glowAmt * 10}px ${color}${toHex(glowAmt * 0.65)})`
+                            : "none",
+                          transition:
+                            "opacity 140ms ease-out, transform 140ms ease-out, text-shadow 140ms ease-out, filter 140ms ease-out",
+                          willChange: "opacity, transform",
                         }}
                       >
                         {w}
@@ -117,15 +135,18 @@ const CinemaLyricsList = memo(function CinemaLyricsList({ lines, progress, onSee
                   })}
                 </div>
               ) : (
-                /* Inactive: Floating translucent line */
+                /*
+                 * Inactive lines — much smaller, very dim.
+                 * Apple Music makes the inactive lines almost invisible so the
+                 * active line jumps out immediately.
+                 */
                 <p
-                  className={`
-                    text-xl sm:text-2xl lg:text-3xl font-bold transition-colors duration-300 leading-snug
-                    ${isPast
-                      ? "text-white/20 hover:text-white/60"
-                      : "text-white/40 hover:text-white/80"
-                    }
-                  `}
+                  className="font-bold leading-snug transition-opacity duration-300"
+                  style={{
+                    fontSize: "clamp(17px, 3vw, 26px)",
+                    color: "white",
+                    opacity: isPast ? 0.18 : 0.30,
+                  }}
                 >
                   {line.text}
                 </p>
@@ -139,6 +160,14 @@ const CinemaLyricsList = memo(function CinemaLyricsList({ lines, progress, onSee
     </div>
   );
 });
+
+/** Convert 0-1 float → 2-digit hex string for rgba colors */
+function toHex(val) {
+  return Math.round(Math.max(0, Math.min(1, val)) * 255)
+    .toString(16)
+    .padStart(2, "0");
+}
+
 
 // ── Main Cinema Stage Component ──────────────────────────────────────────
 export default function CinematicView({ seek }) {
@@ -168,6 +197,13 @@ export default function CinematicView({ seek }) {
   const isFav = currentTrack ? favorites?.some((t) => t.id === currentTrack.id) : false;
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
   const hasSyncedLyrics = lyrics?.synced && lyrics.lines && lyrics.lines.length > 0;
+
+  const handlePrevious = () => {
+    const res = previous();
+    if (res === "restart" && seek) {
+      seek(0);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col overflow-hidden bg-[#07070b] select-none text-white">
@@ -303,7 +339,7 @@ export default function CinematicView({ seek }) {
                 </button>
 
                 <button
-                  onClick={previous}
+                  onClick={handlePrevious}
                   className="p-3 rounded-full border border-white/15 bg-black/50 backdrop-blur-xl text-white/80 hover:text-white hover:bg-white/10 transition-all active:scale-95"
                   title="Previous"
                 >

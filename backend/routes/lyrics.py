@@ -69,26 +69,51 @@ def _clean_variations(title: str, artist: str = "") -> list[tuple[str, str]]:
 
 
 def _parse_lrc(lrc_text: str) -> list[dict]:
-    """Parse LRC format into [{time: float, text: str}]. Handles multi-timestamp lines."""
+    """Parse standard & enhanced LRC format into [{time: float, text: str, words?: list}]."""
     lines = []
     time_tag_pattern = re.compile(r"\[(\d{1,3}):(\d{2})(?:[\.:](\d{2,3}))?\]")
+    word_tag_pattern = re.compile(r"<(\d{1,3}):(\d{2})(?:[\.:](\d{2,3}))?>")
     
     for raw in lrc_text.splitlines():
         raw = raw.strip()
-        if not raw:
-            continue
-        # Skip header metadata lines like [ar:Artist], [ti:Title]
-        if re.match(r"^\[[a-zA-Z]{2,6}:.*\]$", raw):
+        if not raw or re.match(r"^\[[a-zA-Z]{2,6}:.*\]$", raw):
             continue
 
         timestamps = list(time_tag_pattern.finditer(raw))
         if not timestamps:
             continue
 
-        text = time_tag_pattern.sub("", raw).strip()
-        # Clean musical notes
-        text = re.sub(r"[♪♫#\r]+", "", text).strip()
-        if not text:
+        content = time_tag_pattern.sub("", raw).strip()
+        if not content:
+            continue
+
+        # Check for enhanced word timestamps: <mm:ss.xx>word
+        word_matches = list(word_tag_pattern.finditer(content))
+        words_list = []
+        if word_matches:
+            for idx, wm in enumerate(word_matches):
+                w_min, w_sec, w_cs = wm.groups()
+                w_cs = w_cs or "0"
+                cs_val = int(w_cs) / (100 if len(w_cs) <= 2 else 1000)
+                w_time = int(w_min) * 60 + int(w_sec) + cs_val
+                start_pos = wm.end()
+                end_pos = word_matches[idx + 1].start() if idx + 1 < len(word_matches) else len(content)
+                w_text = content[start_pos:end_pos].strip()
+                w_text = re.sub(r"[♪♫#\r]+", "", w_text).strip()
+                if w_text:
+                    words_list.append({"text": w_text, "time": round(w_time, 2)})
+            
+            # Calculate word durations
+            for i, w in enumerate(words_list):
+                if i + 1 < len(words_list):
+                    w["duration"] = round(max(0.1, words_list[i + 1]["time"] - w["time"]), 2)
+                else:
+                    w["duration"] = 0.5
+
+        clean_text = word_tag_pattern.sub("", content)
+        clean_text = re.sub(r"[♪♫#\r]+", "", clean_text).strip()
+        clean_text = re.sub(r"\s+", " ", clean_text)
+        if not clean_text:
             continue
 
         for m in timestamps:
@@ -96,7 +121,10 @@ def _parse_lrc(lrc_text: str) -> list[dict]:
             centiseconds = centiseconds or "0"
             cs_val = int(centiseconds) / (100 if len(centiseconds) <= 2 else 1000)
             time_secs = int(minutes) * 60 + int(seconds) + cs_val
-            lines.append({"time": round(time_secs, 2), "text": text})
+            item = {"time": round(time_secs, 2), "text": clean_text}
+            if words_list:
+                item["words"] = words_list
+            lines.append(item)
 
     return sorted(lines, key=lambda x: x["time"])
 
@@ -221,7 +249,7 @@ async def _fetch_netease(client: httpx.AsyncClient, variations: list[tuple[str, 
 
 
 def _extract_youtube_captions_sync(video_id: str) -> list[dict]:
-    """Extract YouTube captions/subtitles via yt-dlp."""
+    """Extract YouTube captions/subtitles via yt-dlp with millisecond per-word timestamps."""
     if not video_id:
         return []
     import yt_dlp
@@ -229,7 +257,6 @@ def _extract_youtube_captions_sync(video_id: str) -> list[dict]:
         "skip_download": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
-        "subtitleslangs": ["en", "en-US", "en-orig", "en-GB"],
         "quiet": True,
         "no_warnings": True,
     }
@@ -239,26 +266,82 @@ def _extract_youtube_captions_sync(video_id: str) -> list[dict]:
             subs = info.get("subtitles") or {}
             auto_subs = info.get("automatic_captions") or {}
             all_subs = {**subs, **auto_subs}
-            lang_keys = [k for k in all_subs.keys() if k.startswith("en")] or list(all_subs.keys())
+            if not all_subs:
+                return []
 
-            for lk in lang_keys:
-                formats = all_subs.get(lk, [])
-                for f in formats:
-                    if f.get("ext") == "json3":
-                        with httpx.Client(timeout=6) as sync_client:
-                            r = sync_client.get(f.get("url"))
-                            if r.status_code == 200:
-                                data = r.json()
-                                lines = []
-                                for event in data.get("events", []):
-                                    t_ms = event.get("tStartMs", 0)
-                                    segs = event.get("segs", [])
-                                    text = "".join(seg.get("utf8", "") for seg in segs).strip()
-                                    text = re.sub(r"[♪♫\r\n]+", " ", text).strip()
-                                    if text and not re.match(r"^\[.*?\]$", text):
-                                        lines.append({"time": round(t_ms / 1000, 2), "text": text})
-                                if lines:
-                                    return sorted(lines, key=lambda x: x["time"])
+            # Prioritize standard languages
+            pref_langs = ["en", "en-US", "en-orig", "en-GB", "es", "hi", "ko", "ja", "fr", "de"]
+            chosen_lang = None
+            for pl in pref_langs:
+                for k in all_subs.keys():
+                    if k.lower() == pl or k.lower().startswith(pl + "-"):
+                        chosen_lang = k
+                        break
+                if chosen_lang:
+                    break
+            if not chosen_lang:
+                chosen_lang = list(all_subs.keys())[0]
+
+            formats = all_subs.get(chosen_lang, [])
+            json3_fmt = next((f for f in formats if f.get("ext") == "json3"), None)
+            if not json3_fmt:
+                return []
+
+            with httpx.Client(timeout=8) as sync_client:
+                r = sync_client.get(json3_fmt["url"])
+                if r.status_code != 200:
+                    return []
+                data = r.json()
+                events = data.get("events", [])
+                lines = []
+
+                for ev in events:
+                    t_start_ms = ev.get("tStartMs", 0)
+                    d_dur_ms = ev.get("dDurationMs", 0)
+                    segs = ev.get("segs", [])
+                    if not segs:
+                        continue
+
+                    raw_text = "".join(s.get("utf8", "") for s in segs).strip()
+                    clean_line = re.sub(r"[♪♫\r\n]+", " ", raw_text).strip()
+                    clean_line = re.sub(r"\s+", " ", clean_line)
+
+                    # Filter out metadata lines or noise
+                    if not clean_line or clean_line == "\n" or re.match(r"^\[.*?\]$", clean_line):
+                        continue
+
+                    line_start_sec = round(t_start_ms / 1000.0, 3)
+                    line_dur_sec = round(d_dur_ms / 1000.0, 3)
+
+                    # Extract per-word millisecond offsets
+                    words = []
+                    for seg in segs:
+                        w_raw = seg.get("utf8", "")
+                        w_clean = re.sub(r"[♪♫\r\n]+", "", w_raw).strip()
+                        if not w_clean:
+                            continue
+                        w_offset_ms = seg.get("tOffsetMs", 0)
+                        w_time = round((t_start_ms + w_offset_ms) / 1000.0, 3)
+                        words.append({"text": w_clean, "time": w_time})
+
+                    # Calculate per-word duration
+                    for i, w in enumerate(words):
+                        if i + 1 < len(words):
+                            w["duration"] = round(max(0.08, words[i + 1]["time"] - w["time"]), 3)
+                        else:
+                            w["duration"] = round(max(0.15, (line_start_sec + line_dur_sec) - w["time"]), 3)
+
+                    item = {
+                        "time": line_start_sec,
+                        "duration": line_dur_sec,
+                        "text": clean_line,
+                    }
+                    if words:
+                        item["words"] = words
+                    lines.append(item)
+
+                if lines and len(lines) >= 3:
+                    return sorted(lines, key=lambda x: x["time"])
     except Exception:
         pass
     return []
@@ -287,7 +370,7 @@ async def lyrics(
     duration: int = Query(0, ge=0),
     videoId: str = Query("", description="Optional YouTube video ID for subtitle fallback"),
 ):
-    cache_key = f"{title.lower().strip()}::{artist.lower().strip()}::{duration}"
+    cache_key = f"{title.lower().strip()}::{artist.lower().strip()}::{duration}::{videoId}"
     cached = get_lyrics(cache_key)
     if cached:
         return cached
@@ -295,25 +378,25 @@ async def lyrics(
     variations = _clean_variations(title, artist)
 
     async with httpx.AsyncClient(timeout=8) as client:
-        # 1. Try LRCLIB for synced LRC
+        # 1. Try LRCLIB for complete studio synchronized LRC
         lrclib_res = await _fetch_lrclib(client, variations, duration)
-        if lrclib_res and lrclib_res.get("synced"):
+        if lrclib_res and lrclib_res.get("synced") and lrclib_res.get("lines"):
             set_lyrics(cache_key, lrclib_res)
             return lrclib_res
 
-        # 2. Try NetEase Cloud Music for synced LRC
+        # 2. Try NetEase Cloud Music for complete studio synchronized LRC
         netease_res = await _fetch_netease(client, variations)
-        if netease_res and netease_res.get("synced"):
+        if netease_res and netease_res.get("synced") and netease_res.get("lines"):
             set_lyrics(cache_key, netease_res)
             return netease_res
 
-        # 3. Try YouTube Captions / Subtitles if videoId is provided
+        # 3. If videoId is provided, try YouTube word-aligned captions/subtitles
         if videoId:
             try:
                 loop = asyncio.get_event_loop()
                 yt_lines = await loop.run_in_executor(None, _extract_youtube_captions_sync, videoId)
-                if yt_lines:
-                    res = {"synced": True, "lines": yt_lines, "provider": "youtube_captions"}
+                if yt_lines and len(yt_lines) >= 3:
+                    res = {"synced": True, "lines": yt_lines, "provider": "youtube_word_sync"}
                     set_lyrics(cache_key, res)
                     return res
             except Exception:

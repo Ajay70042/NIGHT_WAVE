@@ -1,10 +1,19 @@
 /**
- * LyricsView — real-time synced scrolling lyrics overlay.
- * Auto-scrolls active line to center; interactive click-to-seek karaoke panel.
+ * LyricsView — Apple Music-style word-by-word karaoke.
+ *
+ * Apple Music design principles implemented here:
+ * - Purely WHITE text — no color changes, only opacity + scale
+ * - Active line is BIG (~26px bold), inactive lines are SMALL (~14px)
+ * - The size contrast is the core visual signal for the active line
+ * - Within active line: sung words dim to 45%, current word = 100% + white glow,
+ *   upcoming words = 22% (very faint, just readable)
+ * - Fast transitions: 160ms ease-out (feels snappy, not laggy)
+ * - Words rendered as natural flowing prose, not as a list
  */
 import { useEffect, useRef } from "react";
 import { X, Mic2, Loader2, Music, Sparkles } from "lucide-react";
 import usePlayerStore from "../store/usePlayerStore";
+import { getActiveLineIdx, getWordActivations } from "../lib/wordSync";
 
 export default function LyricsView({ seek }) {
   const { isLyricsOpen, toggleLyrics, lyrics, lyricsLoading, progress, currentTrack } =
@@ -13,48 +22,33 @@ export default function LyricsView({ seek }) {
   const containerRef = useRef(null);
   const activeLineRef = useRef(null);
 
-  // Find active line index (last line whose time <= current progress)
-  const getActiveLine = () => {
-    if (!lyrics?.synced || !lyrics.lines || lyrics.lines.length === 0) return -1;
-    let idx = 0;
-    for (let i = 0; i < lyrics.lines.length; i++) {
-      if (lyrics.lines[i].time <= progress) idx = i;
-      else break;
-    }
-    return idx;
-  };
+  const activeIdx =
+    lyrics?.synced && lyrics.lines ? getActiveLineIdx(lyrics.lines, progress) : -1;
 
-  const activeIdx = getActiveLine();
+  const wordActivations =
+    activeIdx >= 0 && lyrics?.synced && lyrics.lines
+      ? getWordActivations(lyrics.lines, activeIdx, progress)
+      : [];
 
   const prevIdxRef = useRef(-1);
 
-  // Auto-scroll active line into center smoothly only when index changes
   useEffect(() => {
     if (activeIdx !== prevIdxRef.current && activeIdx >= 0) {
       prevIdxRef.current = activeIdx;
-      if (activeLineRef.current) {
-        activeLineRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
+      activeLineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [activeIdx]);
 
   const handleLineClick = (time) => {
-    if (seek && typeof time === "number") {
-      seek(time);
-    }
+    if (seek && typeof time === "number") seek(time);
   };
 
   return (
     <>
-      {/* Backdrop */}
       {isLyricsOpen && (
         <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={toggleLyrics} />
       )}
 
-      {/* Panel */}
       <div
         className={`
           fixed top-0 right-0 bottom-[100px] z-40 w-full sm:w-96
@@ -97,9 +91,8 @@ export default function LyricsView({ seek }) {
         <div
           ref={containerRef}
           className="flex-1 overflow-y-auto px-5 py-6 select-none"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}
+          style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}
         >
-          {/* Loading */}
           {lyricsLoading && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-white/30">
               <Loader2 className="w-6 h-6 animate-spin text-accent" />
@@ -107,7 +100,6 @@ export default function LyricsView({ seek }) {
             </div>
           )}
 
-          {/* Not found */}
           {!lyricsLoading && lyrics && !lyrics.synced && !lyrics.plain && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-white/25 text-center">
               <Music className="w-10 h-10 opacity-30 mx-auto" />
@@ -116,7 +108,6 @@ export default function LyricsView({ seek }) {
             </div>
           )}
 
-          {/* No track selected */}
           {!lyricsLoading && !lyrics && !currentTrack && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-white/25 text-center">
               <Mic2 className="w-10 h-10 opacity-30 mx-auto" />
@@ -124,39 +115,87 @@ export default function LyricsView({ seek }) {
             </div>
           )}
 
-          {/* Plain text fallback (if ever unsynced) */}
           {!lyricsLoading && lyrics?.plain && !lyrics?.synced && (
             <pre className="text-sm text-white/70 whitespace-pre-wrap leading-relaxed font-sans text-center py-8">
               {lyrics.plain}
             </pre>
           )}
 
-          {/* Synced lyrics (Karaoke mode) */}
+          {/* ── Apple Music-style synced lyrics ── */}
           {!lyricsLoading && lyrics?.synced && lyrics.lines && (
-            <div className="flex flex-col gap-3 pb-36">
-              {/* Top spacer so first line centers */}
-              <div style={{ height: "35vh" }} />
+            <div className="flex flex-col pb-36">
+              <div style={{ height: "38vh" }} />
 
               {lyrics.lines.map((line, i) => {
                 const isActive = i === activeIdx;
                 const isPast = i < activeIdx;
+                const words = line.words && line.words.length > 0
+                  ? line.words.map((w) => w.text)
+                  : line.text.split(/\s+/).filter(Boolean);
 
                 return (
                   <button
                     key={i}
                     ref={isActive ? activeLineRef : null}
                     onClick={() => handleLineClick(line.time)}
-                    className="w-full text-left py-1.5 px-2 select-none transition-all duration-200 group"
+                    className="w-full text-left select-none group"
+                    style={{
+                      padding: isActive ? "12px 8px 16px" : "6px 8px",
+                    }}
                   >
                     {isActive ? (
-                      <span className="text-[20px] leading-snug font-extrabold text-white text-glow-lime block">
-                        {line.text}
+                      <span
+                        className="flex flex-wrap leading-tight font-bold tracking-tight"
+                        style={{ fontSize: "clamp(20px, 4.8vw, 26px)", gap: "0 0.28em" }}
+                      >
+                        {words.map((word, wIdx) => {
+                          const act = wordActivations[wIdx] ?? 0;
+                          // Opacity curve: upcoming=0.20, sung=0.45, active=1.0
+                          const opacity = act > 0.55
+                            ? 0.45 + (act - 0.55) * 1.22 // 0.45 → 1.0
+                            : act > 0.1
+                            ? 0.45 // sung
+                            : 0.20 + act * 1.5; // upcoming
+                          const scale = act > 0.65 ? 1 + (act - 0.65) * 0.12 : 1.0;
+                          const glowStrength = Math.max(0, act - 0.68) / 0.32; // only glow when actively sung
+
+                          return (
+                            <span
+                              key={wIdx}
+                              style={{
+                                display: "inline-block",
+                                color: "white",
+                                opacity: Math.min(1, Math.max(0.18, opacity)),
+                                transform: `scale(${scale})`,
+                                transformOrigin: "left center",
+                                textShadow: glowStrength > 0
+                                  ? `0 0 ${glowStrength * 16}px rgba(255,255,255,${glowStrength * 0.85}), 0 0 ${glowStrength * 6}px rgba(255,255,255,${glowStrength * 0.5})`
+                                  : "none",
+                                transition:
+                                  "opacity 140ms ease-out, transform 140ms ease-out, text-shadow 140ms ease-out",
+                                willChange: "opacity, transform",
+                              }}
+                            >
+                              {word}
+                            </span>
+                          );
+                        })}
                       </span>
                     ) : (
+                      /*
+                       * Inactive lines — Apple Music style:
+                       * - Much smaller font
+                       * - Past lines very dim (18%), future slightly more visible (28%)
+                       * - Single line, not split into words (no overhead)
+                       * - Hover: slightly brighter so click-to-seek is discoverable
+                       */
                       <span
-                        className={`text-[15px] font-semibold transition-colors duration-200 block ${
-                          isPast ? "text-white/20 hover:text-white/50" : "text-white/40 hover:text-white/70"
-                        }`}
+                        className="block font-semibold leading-snug transition-opacity duration-300"
+                        style={{
+                          fontSize: "clamp(13px, 3.2vw, 15px)",
+                          opacity: isPast ? 0.18 : 0.28,
+                          color: "white",
+                        }}
                       >
                         {line.text}
                       </span>
@@ -165,8 +204,7 @@ export default function LyricsView({ seek }) {
                 );
               })}
 
-              {/* Bottom spacer */}
-              <div style={{ height: "35vh" }} />
+              <div style={{ height: "38vh" }} />
             </div>
           )}
         </div>

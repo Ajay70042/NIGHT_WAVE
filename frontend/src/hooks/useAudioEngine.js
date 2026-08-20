@@ -205,7 +205,7 @@ export function useAudioEngine() {
     } catch (e) { /* ignore */ }
   }, [volume, isMuted]);
 
-  // ── Progress ticker (200ms smooth updates) ────────────────────────────────
+  // ── Progress ticker (50ms high-precision updates for word-level sync) ─────
   useEffect(() => {
     const interval = setInterval(() => {
       const p = playerRef.current;
@@ -222,7 +222,7 @@ export function useAudioEngine() {
           }
         } catch (e) { /* ignore */ }
       }
-    }, 200);
+    }, 50);
 
     return () => clearInterval(interval);
   }, [setProgress]);

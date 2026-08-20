@@ -98,12 +98,12 @@ const usePlayerStore = create(
       setIsPlaying: (v) => set({ isPlaying: v }),
 
       // Play a track — instantly updates playback state and signals audio engine via streamUrl
-      playTrack: (track) => {
+      playTrack: (track, addToHistory = true) => {
         if (!track || !track.id) return;
         const { currentTrack, playCounts } = get();
 
-        // Push previous track to history if different
-        if (currentTrack && currentTrack.id !== track.id) {
+        // Push previous track to history if different and addToHistory is true
+        if (addToHistory && currentTrack && currentTrack.id !== track.id) {
           set((s) => ({
             history: [s.currentTrack, ...s.history.filter((t) => t.id !== s.currentTrack.id)].slice(0, 50),
           }));
@@ -282,15 +282,16 @@ const usePlayerStore = create(
       },
 
       previous: () => {
-        const { history, progress } = get();
-        if (progress > 3) {
+        const { history } = get();
+        if (!history || history.length === 0) {
+          // If no history, restart track from 0:00
           set({ progress: 0 });
-          return "seek-start";
+          return "restart";
         }
-        if (history.length === 0) return;
-        const prev = history[0];
+        const prevTrack = history[0];
         set((s) => ({ history: s.history.slice(1) }));
-        get().playTrack(prev);
+        get().playTrack(prevTrack, false);
+        return "played-prev";
       },
     }),
     {
