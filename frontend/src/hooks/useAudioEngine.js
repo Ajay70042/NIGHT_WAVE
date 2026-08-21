@@ -118,7 +118,7 @@ export function useAudioEngine() {
       container = document.createElement("div");
       container.id = "yt-player-container";
       container.style.cssText =
-        "position:fixed;bottom:0;left:0;width:1px;height:1px;opacity:1;pointer-events:none;z-index:-1;overflow:hidden;";
+        "position:fixed;top:-9999px;left:-9999px;width:200px;height:200px;opacity:0.01;pointer-events:none;z-index:-9999;";
       document.body.appendChild(container);
     }
 
@@ -129,8 +129,8 @@ export function useAudioEngine() {
       if (!window.YT || !window.YT.Player) return;
 
       const player = new window.YT.Player("yt-player-container", {
-        width: "1",
-        height: "1",
+        width: "200",
+        height: "200",
         videoId: "",
         playerVars: {
           autoplay: 1,
@@ -142,8 +142,6 @@ export function useAudioEngine() {
           modestbranding: 1,
           rel: 0,
           playsinline: 1,
-          origin: window.location.origin,
-          widget_referrer: window.location.href,
         },
         events: {
           onReady: () => {
@@ -282,29 +280,52 @@ export function useAudioEngine() {
     }
   }, [volume, isMuted]);
 
-  // ── 6. 50ms High-Precision Progress Ticker ────────────────────────────────
+  // ── 6. 50ms High-Precision Progress Ticker & Drift Correction ──────────────
   useEffect(() => {
+    let lastTickTime = performance.now();
+
     const interval = setInterval(() => {
+      const now = performance.now();
+      const dt = (now - lastTickTime) / 1000;
+      lastTickTime = now;
+
       if (IS_NATIVE) {
         const audio = nativeAudioRef.current;
         if (!audio || audio.paused) return;
         const t = audio.currentTime;
-        if (t >= 0) setProgress(t);
+        if (typeof t === "number" && !isNaN(t) && t >= 0) {
+          setProgress(t);
+        }
       } else {
         const p = playerRef.current;
-        if (!p || !readyRef.current) return;
-        try {
-          const t = p.getCurrentTime?.();
-          if (typeof t === "number" && !isNaN(t) && t >= 0) {
-            setProgress(t);
-          }
-          const dur = p.getDuration?.();
-          if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
-            if (usePlayerStore.getState().duration !== dur) {
-              usePlayerStore.getState().setDuration(dur);
+        const state = usePlayerStore.getState();
+
+        let syncedFromPlayer = false;
+        if (p) {
+          try {
+            const t = p.getCurrentTime?.();
+            if (typeof t === "number" && !isNaN(t) && t >= 0) {
+              setProgress(t);
+              syncedFromPlayer = true;
             }
+            const dur = p.getDuration?.();
+            if (typeof dur === "number" && !isNaN(dur) && dur > 0) {
+              if (state.duration !== dur) {
+                state.setDuration(dur);
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Smooth continuous interpolation fallback if YouTube postMessage is delayed or backgrounded
+        if (!syncedFromPlayer && state.isPlaying) {
+          const nextProg = state.progress + dt;
+          if (state.duration > 0 && nextProg <= state.duration) {
+            setProgress(nextProg);
+          } else if (!state.duration) {
+            setProgress(nextProg);
           }
-        } catch (_) {}
+        }
       }
     }, 50);
 
@@ -336,12 +357,13 @@ export function useAudioEngine() {
       safeSet("stop", () => store.setIsPlaying(false));
       safeSet("seekto", (details) => {
         if (details.seekTime != null) {
+          const sec = Math.max(0, details.seekTime);
           if (IS_NATIVE && nativeAudioRef.current) {
-            nativeAudioRef.current.currentTime = details.seekTime;
-          } else if (playerRef.current && readyRef.current) {
-            playerRef.current.seekTo(details.seekTime, true);
+            nativeAudioRef.current.currentTime = sec;
+          } else if (playerRef.current) {
+            try { playerRef.current.seekTo(sec, true); } catch (_) {}
           }
-          store.setProgress(details.seekTime);
+          store.setProgress(sec);
         }
       });
     } catch (_) {}
@@ -349,22 +371,22 @@ export function useAudioEngine() {
 
   // ── 8. Seek Callback ──────────────────────────────────────────────────────
   const seek = useCallback((seconds) => {
+    const sec = Math.max(0, seconds);
     if (IS_NATIVE) {
       const audio = nativeAudioRef.current;
       if (audio) {
-        audio.currentTime = Math.max(0, seconds);
-        usePlayerStore.getState().setProgress(Math.max(0, seconds));
+        audio.currentTime = sec;
       }
     } else {
       const p = playerRef.current;
-      if (p && readyRef.current) {
+      if (p) {
         try {
-          p.seekTo(seconds, true);
-          setProgress(seconds);
+          p.seekTo(sec, true);
         } catch (_) {}
       }
     }
-  }, [setProgress]);
+    usePlayerStore.getState().setProgress(sec);
+  }, []);
 
   return { analyser: analyserRef, seek };
 }
