@@ -22,13 +22,14 @@ function loadYTScript() {
 }
 
 export function useAudioEngine() {
-  const analyserRef    = useRef(null);
-  const playerRef      = useRef(null);
-  const readyRef       = useRef(false);
-  const pendingIdRef   = useRef(null);
-  const wakeLockRef    = useRef(null);
-  const nativeAudioRef = useRef(null);
-  const loadedIdRef    = useRef(null);
+  const analyserRef     = useRef(null);
+  const playerRef       = useRef(null);
+  const readyRef        = useRef(false);
+  const pendingIdRef    = useRef(null);
+  const wakeLockRef     = useRef(null);
+  const nativeAudioRef  = useRef(null);
+  const loadedIdRef     = useRef(null);
+  const lastLoadTimeRef = useRef(0);
 
   const {
     streamUrl,
@@ -155,6 +156,7 @@ export function useAudioEngine() {
             if (pendingIdRef.current) {
               const vid = pendingIdRef.current;
               pendingIdRef.current = null;
+              lastLoadTimeRef.current = Date.now();
               player.loadVideoById({ videoId: vid, startSeconds: 0 });
               try { player.playVideo(); } catch (_) {}
             }
@@ -166,12 +168,13 @@ export function useAudioEngine() {
               const dur = player.getDuration?.() || 0;
               if (dur > 0) usePlayerStore.getState().setDuration(dur);
             } else if (e.data === 2) {
-              usePlayerStore.getState().setIsPlaying(false);
-            } else if (e.data === 3) {
-              if (usePlayerStore.getState().isPlaying) {
+              // Ignore temporary PAUSED event emitted by YouTube when unloading the previous video during track change
+              if (Date.now() - lastLoadTimeRef.current < 2500 && usePlayerStore.getState().isPlaying) {
                 try { player.playVideo(); } catch (_) {}
+                return;
               }
-            } else if (e.data === 5 || e.data === -1) {
+              usePlayerStore.getState().setIsPlaying(false);
+            } else if (e.data === 3 || e.data === 5 || e.data === -1) {
               if (usePlayerStore.getState().isPlaying) {
                 try { player.playVideo(); } catch (_) {}
               }
@@ -213,6 +216,7 @@ export function useAudioEngine() {
   useEffect(() => {
     if (!streamUrl) return;
     const videoId = streamUrl;
+    lastLoadTimeRef.current = Date.now();
 
     if (IS_NATIVE) {
       const audio = nativeAudioRef.current;
