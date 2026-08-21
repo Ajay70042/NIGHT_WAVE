@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://nightwave-api.onrender.com/api/$1"
+      "destination": "https://nightwave-api-r6i8.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

@@ -9,7 +9,7 @@ const isLocalhost =
   (window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1");
 
-const DEFAULT_PROD_API = "https://nightwave-api.onrender.com/api";
+const DEFAULT_PROD_API = "https://nightwave-api-r6i8.onrender.com/api";
 
 const BASE = rawBase
   ? rawBase.replace(/\/+$/, "").endsWith("/api")
