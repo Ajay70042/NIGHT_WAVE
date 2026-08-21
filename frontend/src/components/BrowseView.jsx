@@ -6,7 +6,6 @@
  *   ───────────────────────
  *   Greeting
  *   [Mood filter pills] (Relax, Energize, Workout, etc.)
- *   NowPlayingBanner (if active)
  *   Recently Played row (if any)
  *   [Song rows] × N
  */
@@ -14,7 +13,6 @@ import { useEffect, useReducer, useState } from "react";
 import { searchTracks } from "../lib/api";
 import usePlayerStore from "../store/usePlayerStore";
 import BrowseTopBar from "./BrowseTopBar";
-import NowPlayingBanner from "./NowPlayingBanner";
 import TrackRow from "./TrackRow";
 
 // ─── Filter Pills ────────────────────────────────────────────────
@@ -163,12 +161,6 @@ export default function BrowseView() {
           </div>
         </div>
 
-        {/* ── Now Playing banner ────────────────────────────────── */}
-        {currentTrack && (
-          <div className="mb-8">
-            <NowPlayingBanner />
-          </div>
-        )}
 
         {/* ── On Repeat (Most Played) ─────────────────────────── */}
         {mostPlayedTracks.length > 0 && activeFilter === "all" && (
