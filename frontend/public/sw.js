@@ -5,7 +5,7 @@
 //   - YouTube iframe: Network-only (cross-origin, not cacheable)
 //   - Navigation: Serve cached index.html for offline support
 
-const CACHE_NAME = "nightwave-v2";
+const CACHE_NAME = "nightwave-v4";
 
 // Core app shell assets to pre-cache on install
 const APP_SHELL = [
@@ -57,12 +57,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3. Navigation requests — serve app shell (enables offline + PWA install)
+  // 3. Navigation requests — Network-first, fallback to cached app shell
   if (request.mode === "navigate") {
     event.respondWith(
-      caches.match("/index.html").then(
-        (cached) => cached || fetch(request)
-      )
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put("/index.html", clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match("/index.html"))
     );
     return;
   }
