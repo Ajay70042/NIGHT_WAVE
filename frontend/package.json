@@ -1,42 +1,19 @@
 {
   "name": "frontend",
-  "productName": "NightWave",
-  "description": "NightWave Music Desktop App",
-  "author": "NightWave",
+  "productName": "Murgichor",
+  "description": "Murgichor Music Desktop App",
+  "author": "Murgichor",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "desktop": "electron electron/main.cjs",
-    "desktop:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron electron/main.cjs\"",
-    "desktop:build": "vite build && electron-builder --win portable",
-    "desktop:installer": "vite build && electron-builder --win nsis",
     "lint": "oxlint",
     "preview": "vite preview"
-  },
-  "build": {
-    "appId": "com.nightwave.music",
-    "productName": "NightWave",
-    "electronVersion": "45.4.1",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "win": {
-      "target": [
-        "portable",
-        "nsis"
-      ]
-    }
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
@@ -72,13 +49,9 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "autoprefixer": "^10.5.4",
-    "concurrently": "^10.0.7",
-    "electron": "45.4.1",
-    "electron-builder": "^26.18.0",
     "oxlint": "^1.75.0",
     "postcss": "^8.5.26",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.2.0",
-    "wait-on": "^9.5.1"
+    "vite": "^8.2.0"
   }
 }
