@@ -1,6 +1,14 @@
 import sys
 from pathlib import Path
 
+# On Windows, use SelectorEventLoop to prevent [WinError 64] socket crashes on sleep/reconnect
+if sys.platform == "win32":
+    import asyncio
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
+
 # Ensure both repo root and backend directory are in sys.path for Render / local flexibility
 _CUR_DIR = Path(__file__).resolve().parent
 _ROOT_DIR = _CUR_DIR.parent
@@ -17,11 +25,13 @@ try:
     from backend.routes.stream import router as stream_router
     from backend.routes.lyrics import router as lyrics_router
     from backend.routes.suggestions import router as suggestions_router
+    from backend.routes.user import router as user_router
 except ImportError:
     from routes.search import router as search_router
     from routes.stream import router as stream_router
     from routes.lyrics import router as lyrics_router
     from routes.suggestions import router as suggestions_router
+    from routes.user import router as user_router
 
 app = FastAPI(
     title="NightWave API",
@@ -41,9 +51,16 @@ app.include_router(search_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(lyrics_router, prefix="/api")
 app.include_router(suggestions_router, prefix="/api")
+app.include_router(user_router, prefix="/api")
 
 @app.get("/")
 @app.get("/health")
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "nightwave-api"}
+
+if __name__ == "__main__":
+    import uvicorn
+    import multiprocessing
+    multiprocessing.freeze_support()
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")

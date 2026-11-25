@@ -4,40 +4,82 @@ export default {
   theme: {
     extend: {
       colors: {
-        obsidian: "#0a0a0c",
-        surface: "#111114",
-        elevated: "#18181c",
-        border: "#222226",
-        accent: {
-          DEFAULT: "#a3e635", // lime
-          blue: "#38bdf8",    // electric blue
-          dim: "#6b7280",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        card: {
+          DEFAULT: "var(--card)",
+          foreground: "var(--card-foreground)",
         },
+        popover: {
+          DEFAULT: "var(--popover)",
+          foreground: "var(--popover-foreground)",
+        },
+        primary: {
+          DEFAULT: "var(--primary)",
+          foreground: "var(--primary-foreground)",
+        },
+        secondary: {
+          DEFAULT: "var(--secondary)",
+          foreground: "var(--secondary-foreground)",
+        },
+        muted: {
+          DEFAULT: "var(--muted)",
+          foreground: "var(--muted-foreground)",
+        },
+        accent: {
+          DEFAULT: "var(--accent)",
+          foreground: "var(--accent-foreground)",
+        },
+        destructive: {
+          DEFAULT: "var(--destructive)",
+          foreground: "var(--destructive-foreground)",
+        },
+        border: "var(--border)",
+        input: "var(--input)",
+        ring: "var(--ring)",
+        hairline: "var(--hairline)",
+        sidebar: {
+          DEFAULT: "var(--sidebar)",
+          foreground: "var(--sidebar-foreground)",
+          primary: "var(--sidebar-primary)",
+          "primary-foreground": "var(--sidebar-primary-foreground)",
+          accent: "var(--sidebar-accent)",
+          "accent-foreground": "var(--sidebar-accent-foreground)",
+          border: "var(--sidebar-border)",
+          ring: "var(--sidebar-ring)",
+        },
+        obsidian: "#050508",
+        surface:  "#0c0c10",
+        elevated: "#121216",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        display: ["'DM Serif Display'", "Georgia", "serif"],
+        display: ["Fraunces", "DM Serif Display", "Georgia", "serif"],
+        body: ["Manrope", "Inter", "system-ui", "sans-serif"],
+        sans: ["Manrope", "Inter", "system-ui", "sans-serif"],
+        kr: ["Noto Serif KR", "Georgia", "serif"],
+        mono: ["'JetBrains Mono'", "monospace"],
+      },
+      boxShadow: {
+        art: "var(--shadow-art)",
+        card: "0 2px 20px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.03)",
+        player: "0 -1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(255,255,255,0.03), 0 40px 100px rgba(0,0,0,0.95)",
       },
       animation: {
         "spin-slow": "spin 8s linear infinite",
-        "pulse-ring": "pulse-ring 2s ease-in-out infinite",
+        "pulse-soft": "pulse-soft 3s ease-in-out infinite",
         "slide-up": "slide-up 0.4s cubic-bezier(0.16,1,0.3,1)",
         "slide-right": "slide-right 0.35s cubic-bezier(0.16,1,0.3,1)",
-        "fade-in": "fade-in 0.3s ease",
+        "fade-in": "fade-in 0.25s ease",
         marquee: "marquee 12s linear infinite",
-        "aurora-1": "aurora-1 10s ease-in-out infinite alternate",
-        "aurora-2": "aurora-2 14s ease-in-out infinite alternate",
-        "aurora-3": "aurora-3 8s ease-in-out infinite alternate",
-        "road-rush": "road-dash 1.8s linear infinite",
-        "scene-fade": "fade-in 0.4s ease",
+        shimmer: "shimmer 2s linear infinite",
       },
       keyframes: {
-        "pulse-ring": {
-          "0%,100%": { boxShadow: "0 0 0 0 rgba(163,230,53,0.15)" },
-          "50%": { boxShadow: "0 0 0 12px rgba(163,230,53,0)" },
+        "pulse-soft": {
+          "0%,100%": { opacity: 0.5 },
+          "50%": { opacity: 1 },
         },
         "slide-up": {
-          from: { opacity: 0, transform: "translateY(24px)" },
+          from: { opacity: 0, transform: "translateY(20px)" },
           to: { opacity: 1, transform: "translateY(0)" },
         },
         "slide-right": {
@@ -52,24 +94,11 @@ export default {
           "0%": { transform: "translateX(0)" },
           "100%": { transform: "translateX(-50%)" },
         },
-        "road-dash": {
-          from: { top: "-15%" },
-          to: { top: "115%" },
-        },
-        "aurora-1": {
-          from: { transform: "translate(0,0) scale(1) rotate(0deg)" },
-          to: { transform: "translate(10%,5%) scale(1.15) rotate(5deg)" },
-        },
-        "aurora-2": {
-          from: { transform: "translate(0,0) scale(1.1) rotate(0deg)" },
-          to: { transform: "translate(-8%,8%) scale(1) rotate(-8deg)" },
-        },
-        "aurora-3": {
-          from: { transform: "translate(0,0) scale(1) rotate(0deg)" },
-          to: { transform: "translate(5%,-5%) scale(1.2) rotate(10deg)" },
+        shimmer: {
+          "0%": { backgroundPosition: "200% 0" },
+          "100%": { backgroundPosition: "-200% 0" },
         },
       },
-      backdropBlur: { xs: "2px" },
     },
   },
   plugins: [],

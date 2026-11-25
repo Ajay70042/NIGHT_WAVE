@@ -19,9 +19,20 @@ wheels/
 .installed.cfg
 *.egg
 .env
+.env.local
 .venv
 venv/
 ENV/
+backend/auth.json
+*auth*.json
+user_cache.json
+
+# Tauri / Desktop Binaries
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+NightWave-Tauri/
+*.exe
+*.msi
 
 # Node
 node_modules/

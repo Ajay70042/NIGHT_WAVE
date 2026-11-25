@@ -4,7 +4,6 @@ import "./index.css";
 import App from "./App.jsx";
 
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
-
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ErrorBoundary>
@@ -13,18 +12,17 @@ createRoot(document.getElementById("root")).render(
   </StrictMode>
 );
 
-// Register Service Worker for PWA (background audio + offline app shell)
+// Unregister any legacy Service Worker from PWA to prevent stale app shell caching in WebView2
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
-      .then((reg) => {
-        console.log("[NightWave SW] Registered:", reg.scope);
-        // Trigger immediate update check on each page load
-        reg.update();
-      })
-      .catch((err) => {
-        console.warn("[NightWave SW] Registration failed:", err);
-      });
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const reg of registrations) {
+      reg.unregister();
+    }
   });
+  if (typeof caches !== "undefined") {
+    caches.keys().then((keys) => {
+      keys.forEach((key) => caches.delete(key));
+    });
+  }
 }
+

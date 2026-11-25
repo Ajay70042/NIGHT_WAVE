@@ -2,17 +2,20 @@
 GET /api/suggestions?videoId={id}&limit={n}
 Returns suggested tracks based on the provided video ID via ytmusicapi radio feature.
 """
+import asyncio
 from fastapi import APIRouter, Query, HTTPException
 from ytmusicapi import YTMusic
 try:
     from backend.routes.search import _best_thumbnail, _parse_duration
+    from backend.routes.user import get_ytm
     from backend.cache import get_suggestions, set_suggestions
 except ImportError:
     from routes.search import _best_thumbnail, _parse_duration
+    from routes.user import get_ytm
     from cache import get_suggestions, set_suggestions
 
 router = APIRouter()
-_ytm = YTMusic()
+_fallback_ytm = YTMusic()
 
 @router.get("/suggestions")
 async def suggestions(
@@ -24,13 +27,18 @@ async def suggestions(
     if cached:
         return cached
 
+    ytm, _ = get_ytm()
     tracks = []
     try:
         # radio=True triggers continuous autoplay/discovery algorithms
-        res = _ytm.get_watch_playlist(videoId=videoId, radio=True, limit=limit)
+        res = await asyncio.to_thread(ytm.get_watch_playlist, videoId=videoId, radio=True, limit=limit)
         results = res.get("tracks", [])
-    except Exception as exc:
-        results = []
+    except Exception:
+        try:
+            res = await asyncio.to_thread(_fallback_ytm.get_watch_playlist, videoId=videoId, radio=True, limit=limit)
+            results = res.get("tracks", [])
+        except Exception:
+            results = []
 
     for item in results:
         try:
