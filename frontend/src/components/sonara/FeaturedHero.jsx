@@ -2,6 +2,7 @@ import React from "react";
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { Pause, Play, Shuffle } from "lucide-react";
 import { albumOf, fmt, trackById, tracks, usePlayer } from "../../lib/music";
+import { Dancer } from "./Dancer";
 import { Visualizer } from "./ui";
 import { useFull } from "./FullPlayer";
 
@@ -47,7 +48,7 @@ export function FeaturedHero({ onShuffle, onPlay }) {
           role="button"
           aria-label="Open full screen player"
           title="Open full screen"
-          className="relative order-1 mx-auto aspect-square w-24 shrink-0 cursor-pointer @lg:mx-0 @lg:w-28"
+          className="relative order-1 mx-auto aspect-square w-28 shrink-0 cursor-pointer @lg:mx-0 @lg:w-36"
           style={{ rotateX: rx, rotateY: ry, transformPerspective: 900 }}
         >
           <motion.div
@@ -70,69 +71,75 @@ export function FeaturedHero({ onShuffle, onPlay }) {
           />
         </motion.div>
 
-        <div className="order-2 min-w-0 flex-1 @lg:pl-5">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="hero-tag">
-              {playing ? "Now playing" : resume ? "Continue listening" : "Featured"} · {feat.title}
-            </span>
-            {isFeatPlaying && <Visualizer active bars={5} />}
+        <div className="order-2 min-w-0 flex-1 @lg:pl-5 flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="hero-tag">
+                {playing ? "Now playing" : resume ? "Continue listening" : "Featured"} · {feat.title}
+              </span>
+              {isFeatPlaying && <Visualizer active bars={5} />}
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.h2
+                key={cur?.id || "default"}
+                exit={{ opacity: 0, filter: "blur(6px)" }}
+                transition={{ duration: 0.3 }}
+                className={`font-display mt-2 truncate text-2xl leading-[1.08] @lg:text-[1.85rem] @2xl:text-4xl ${
+                  playing ? "title-pulse" : ""
+                }`}
+              >
+                {words.map((w, i) => (
+                  <motion.span
+                    key={w + i}
+                    className={`inline ${
+                      i === 0 && words.length > 1
+                        ? "title-outline"
+                        : i > 0
+                        ? "italic text-primary"
+                        : ""
+                    }`}
+                    initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    transition={{ delay: 0.06 + i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {w}{" "}
+                  </motion.span>
+                ))}
+              </motion.h2>
+            </AnimatePresence>
+
+            <p className="mt-1.5 truncate text-xs text-muted-foreground">
+              <span className="text-foreground">{artist}</span> {feat.year ? `· ${feat.year}` : ""}
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  if (cur) toggle();
+                  else if (onPlay) onPlay();
+                }}
+                className="btn-primary !px-4 !py-2.5 !text-[.8rem]"
+              >
+                {isFeatPlaying ? (
+                  <Pause className="size-3.5 fill-current" />
+                ) : (
+                  <Play className="size-3.5 fill-current" />
+                )}{" "}
+                {isFeatPlaying ? "Pause" : resume ? `Resume · ${fmt(time)}` : "Play"}
+              </motion.button>
+              <button
+                onClick={onShuffle}
+                className="btn-ghost !px-4 !py-2.5 !text-[.8rem]"
+              >
+                <Shuffle className="size-3.5" /> Shuffle
+              </button>
+            </div>
           </div>
 
-          <AnimatePresence mode="wait">
-            <motion.h2
-              key={cur?.id || "default"}
-              exit={{ opacity: 0, filter: "blur(6px)" }}
-              transition={{ duration: 0.3 }}
-              className={`font-display mt-2 truncate text-2xl leading-[1.08] @lg:text-[1.85rem] @2xl:text-4xl ${
-                playing ? "title-pulse" : ""
-              }`}
-            >
-              {words.map((w, i) => (
-                <motion.span
-                  key={w + i}
-                  className={`inline ${
-                    i === 0 && words.length > 1
-                      ? "title-outline"
-                      : i > 0
-                      ? "italic text-primary"
-                      : ""
-                  }`}
-                  initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ delay: 0.06 + i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  {w}{" "}
-                </motion.span>
-              ))}
-            </motion.h2>
-          </AnimatePresence>
-
-          <p className="mt-1.5 truncate text-xs text-muted-foreground">
-            <span className="text-foreground">{artist}</span> {feat.year ? `· ${feat.year}` : ""}
-          </p>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2.5">
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                if (cur) toggle();
-                else if (onPlay) onPlay();
-              }}
-              className="btn-primary !px-4 !py-2.5 !text-[.8rem]"
-            >
-              {isFeatPlaying ? (
-                <Pause className="size-3.5 fill-current" />
-              ) : (
-                <Play className="size-3.5 fill-current" />
-              )}{" "}
-              {isFeatPlaying ? "Pause" : resume ? `Resume · ${fmt(time)}` : "Play"}
-            </motion.button>
-            <button
-              onClick={onShuffle}
-              className="btn-ghost !px-4 !py-2.5 !text-[.8rem]"
-            >
-              <Shuffle className="size-3.5" /> Shuffle
-            </button>
+          <div className="shrink-0 self-end pr-1">
+            <Dancer playing={playing} seed={cur?.id || "0"} />
           </div>
         </div>
 

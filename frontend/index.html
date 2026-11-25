@@ -20,6 +20,11 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
   <title>Murgichor</title>
+  <script>
+    if (window.location.search.indexOf('floating=1') !== -1) {
+      document.documentElement.classList.add('floating-window');
+    }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link

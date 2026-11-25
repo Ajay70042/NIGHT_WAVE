@@ -2,7 +2,7 @@ use std::sync::Mutex;
 use std::process::{Child, Command};
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -31,6 +31,51 @@ fn window_close(window: tauri::Window) {
 #[tauri::command]
 fn window_start_dragging(window: tauri::Window) {
     let _ = window.start_dragging();
+}
+
+#[tauri::command]
+async fn open_floating_lyrics(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window("floating-lyrics") {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "floating-lyrics",
+        WebviewUrl::App("index.html?floating=1".into()),
+    )
+    .title("Murgichor Lyrics")
+    .inner_size(640.0, 290.0)
+    .min_inner_size(320.0, 140.0)
+    .transparent(true)
+    .decorations(false)
+    .always_on_top(true)
+    .shadow(false)
+    .skip_taskbar(true)
+    .resizable(true)
+    .build()
+    .map_err(|e| format!("Failed to open floating lyrics: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn close_floating_lyrics(app: tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("floating-lyrics") {
+        let _ = win.close();
+    }
+}
+
+#[tauri::command]
+fn broadcast_lyrics_state(app: tauri::AppHandle, payload: serde_json::Value) {
+    let _ = app.emit_to("floating-lyrics", "lyrics-sync", payload);
+}
+
+#[tauri::command]
+fn send_lyrics_action(app: tauri::AppHandle, action: String) {
+    let _ = app.emit_to("main", "lyrics-action", action);
 }
 
 #[tauri::command]
@@ -140,7 +185,11 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_close,
-            window_start_dragging
+            window_start_dragging,
+            open_floating_lyrics,
+            close_floating_lyrics,
+            broadcast_lyrics_state,
+            send_lyrics_action
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -182,6 +231,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::Destroyed = event {
+                    // Close floating lyrics window if open
+                    if let Some(fl) = window.app_handle().get_webview_window("floating-lyrics") {
+                        let _ = fl.close();
+                    }
                     // When main window closes, terminate background backend process cleanly
                     let state = window.state::<BackendProcess>();
                     if let Ok(mut lock) = state.0.lock() {

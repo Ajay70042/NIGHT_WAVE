@@ -256,4 +256,22 @@ button, input, a, select, textarea {
   border: 1px solid color-mix(in oklab, var(--foreground) 9%, transparent);
   box-shadow: 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent) inset, 0 18px 50px -12px oklch(0 0 0 / 0.6), 0 4px 14px -6px oklch(0 0 0 / 0.5);
 }
+
+/* Floating mini lyrics: no box, text floats freely */
+html.floating-window,
+html.floating-window body,
+html.floating-window #root {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+.mini-lyrics {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.mini-lyrics .icon-btn {
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.9));
+}
 .lift { box-shadow: 0 30px 80px -20px oklch(0 0 0 / 0.75), 0 10px 24px -10px oklch(0 0 0 / 0.6); transform: translateY(-4px); }

@@ -25,6 +25,7 @@ import {
   createYTMPlaylist,
   addTracksToYTMPlaylist,
 } from "./api";
+import { ensureBeatAnalyser } from "./audio";
 
 export const fallbackCovers = [c1, c2, c3, c4, c5, c6];
 
@@ -206,6 +207,7 @@ const startingTrack = initialCachedHistory[0] || initialCachedLiked[0] || null;
 let globalAudio = null;
 if (typeof window !== "undefined") {
   globalAudio = new Audio();
+  globalAudio.crossOrigin = "anonymous";
   globalAudio.preload = "auto";
 }
 
@@ -691,6 +693,7 @@ if (globalAudio) {
   };
 
   globalAudio.addEventListener("play", () => {
+    ensureBeatAnalyser(globalAudio, usePlayer.getState);
     if (!rafId) rafId = requestAnimationFrame(syncLoop);
   });
 

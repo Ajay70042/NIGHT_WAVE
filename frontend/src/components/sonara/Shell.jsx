@@ -3,13 +3,14 @@ import { AnimatePresence, MotionConfig, motion, Reorder } from "framer-motion";
 import {
   Home, Compass, Library, History, Heart, Disc3, Mic2, ListMusic, Play, Pause, SkipBack, SkipForward,
   Shuffle, Repeat, Repeat1, Volume2, VolumeX, X, GripVertical, PanelRightClose, Maximize2,
-  PanelLeftClose, PanelLeftOpen, Radio, Minus, Square,
+  PanelLeftClose, PanelLeftOpen, Radio, Minus, Square, MessageSquareText,
 } from "lucide-react";
 import { Link, useNavigate, useRouter, useRouterState } from "../../lib/router";
 import { albumOf, fmt, trackById, usePlayer } from "../../lib/music";
 import { SearchBar } from "./Search";
 import { Cover, Visualizer } from "./ui";
 import { FullPlayer, useFull } from "./FullPlayer";
+import { FloatingLyrics, useMini } from "./FloatingLyrics";
 
 function AppLogo({ className = "size-7" }) {
   return (
@@ -216,6 +217,7 @@ function QueuePanel() {
 
 function PlayerBar() {
   const s = usePlayer();
+  const miniOpen = useMini((m) => m.open);
   const navigate = useNavigate();
   const t = trackById(s.currentId);
   const a = albumOf(t);
@@ -331,6 +333,15 @@ function PlayerBar() {
           className="md:hidden play-btn size-10 rounded-full grid place-items-center"
         >
           {s.playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
+        </button>
+        <button
+          onClick={() => useMini.getState().set(!miniOpen)}
+          aria-label="Floating lyrics"
+          title="Floating lyrics"
+          aria-pressed={miniOpen}
+          className={`icon-btn ${miniOpen ? "text-primary" : ""}`}
+        >
+          <MessageSquareText className="size-4" />
         </button>
         <button
           onClick={s.toggleQueue}
@@ -680,6 +691,7 @@ export function Shell({ children }) {
       </div>
       {!immersive && <PlayerBar />}
       <FullPlayer />
+      <FloatingLyrics />
     </div>
     </MotionConfig>
   );

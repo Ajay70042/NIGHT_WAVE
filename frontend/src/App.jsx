@@ -6,6 +6,7 @@ import { DiscoverPage } from "./pages/DiscoverPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { LyricsPage } from "./pages/LyricsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { FloatingLyricsOverlay } from "./components/sonara/FloatingLyrics";
 import { pingHealth } from "./lib/api";
 
 function AppContent() {
@@ -24,9 +25,16 @@ function AppContent() {
 }
 
 export default function App() {
+  const isFloating =
+    typeof window !== "undefined" && window.location.search.includes("floating=1");
+
   useEffect(() => {
-    pingHealth();
-  }, []);
+    if (!isFloating) pingHealth();
+  }, [isFloating]);
+
+  if (isFloating) {
+    return <FloatingLyricsOverlay />;
+  }
 
   return (
     <RouterProvider initialPath="/">
